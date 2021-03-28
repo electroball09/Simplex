@@ -1,0 +1,11 @@
+{
+  "profile": "",
+  "region": "us-west-1",
+  "configuration": "Release",
+  "framework": "netcoreapp3.1",
+  "function-name": "SimplexRequestHandler",
+  "function-runtime": "dotnetcore3.1",
+  "function-memory-size": 128,
+  "function-timeout": 10,
+  "function-handler": "SimplexLambda::SimplexLambda.SimplexLambdaFunctions::SimplexRequestHandler"
+}
