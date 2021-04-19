@@ -157,8 +157,7 @@ namespace Simplex
                     {
                         AuthID = id,
                         AuthSecret = encSecret,
-                        AuthType = authType,
-                        AutoCreateAccount = Config.LoginAutoCreateAccount
+                        AuthType = authType
                     };
 
                     try

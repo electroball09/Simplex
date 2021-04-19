@@ -48,7 +48,7 @@ namespace SimplexLambda.RequestHandlers
                 return new SimplexResponse(context.Request) { Error = authErr };
             }
 
-            var (tokenErr, token) = LambdaUtil.GenerateAccessToken(acc.ConnectedSimplexGUID, context);
+            var (tokenErr, token) = LambdaUtil.GenerateAccessToken(acc.ConnectedUserGUID, context);
             if (tokenErr)
             {
                 __EndDiag();
@@ -57,7 +57,7 @@ namespace SimplexLambda.RequestHandlers
 
             UserCredentials cred = new UserCredentials()
             {
-                AuthGUID = acc.ConnectedSimplexGUID,
+                UserGUID = acc.ConnectedUserGUID,
                 AuthToken = token.Token
             };
 

@@ -16,8 +16,7 @@ namespace Simplex
                 Logger = old.Logger,
                 APIUrl = old.APIUrl,
                 APIStage = old.APIStage,
-                APIResource = old.APIResource,
-                LoginAutoCreateAccount = old.LoginAutoCreateAccount
+                APIResource = old.APIResource
             };
 
             return copy;
@@ -28,8 +27,6 @@ namespace Simplex
         public string APIUrl { get; set; } = "";
         public string APIStage { get; set; } = "";
         public string APIResource { get; set; } = "";
-
-        public bool LoginAutoCreateAccount { get; set; } = true;
 
         public string AssembleURL()
         {

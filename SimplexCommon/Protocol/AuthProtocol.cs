@@ -16,12 +16,11 @@ namespace Simplex.Protocol
         public AuthType AuthType { get; set; }
         public string AuthID { get; set; } = "";
         public string AuthSecret { get; set; } = "";
-        public bool AutoCreateAccount { get; set; } = false;
     }
 
     public class UserCredentials
     {
-        public Guid AuthGUID { get; set; }
+        public Guid UserGUID { get; set; }
         public string AuthToken { get; set; }
     }
 }

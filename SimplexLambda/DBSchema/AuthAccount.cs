@@ -56,6 +56,6 @@ namespace SimplexLambda.DBSchema
 
         public string Secret { get; set; }
         public string Salt { get; set; }
-        public Guid ConnectedSimplexGUID { get; set; }
+        public Guid ConnectedUserGUID { get; set; }
     }
 }
