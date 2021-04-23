@@ -1,0 +1,35 @@
+﻿<Window x:Class="SimplexConsole.View.LambdaSelector"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:SimplexConsole.View"
+        mc:Ignorable="d"
+        Title="Select Lambda" Height="450" Width="250" Padding="0"
+        DataContext="{Binding RelativeSource={x:Static RelativeSource.Self}}" WindowStyle="ToolWindow" 
+        HorizontalContentAlignment="Stretch" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+    <Grid Margin="10,10,10,10" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="25"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="35"/>
+            <RowDefinition Height="25"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel Grid.Row="0" Orientation="Horizontal" DockPanel.Dock="Top" VerticalAlignment="Top" Height="25" Margin="0,0,10,0">
+                <Label Content="Region:"/>
+                <ComboBox x:Name="CmbRegions" SelectionChanged="CmbRegions_SelectionChanged" Width="150" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+        </StackPanel>
+        <ListBox x:Name="ListFunctions" Grid.Row="1" ItemsSource="{Binding Path=Lambdas}" DockPanel.Dock="Top" VerticalAlignment="Stretch" Margin="0,10,0,5" SelectionChanged="ListBox_SelectionChanged" >
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Label Content="{Binding Path=FunctionName}"/>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        <Button Content="+ Create New" Grid.Row="2" HorizontalAlignment="Right" DockPanel.Dock="Bottom" Height="25" Width="98" Margin="0,0,0,10"/>
+        <Button Content="Select" Grid.Row="3" HorizontalAlignment="Stretch" DockPanel.Dock="Bottom" Background="#FFA5DCA5" IsEnabled="{Binding Path=SelectEnabled}" Click="Button_Click"/>
+    </Grid>
+</Window>

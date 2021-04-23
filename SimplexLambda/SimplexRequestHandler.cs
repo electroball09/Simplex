@@ -41,10 +41,11 @@ namespace SimplexLambda
                 diagInfo.BeginDiag("CONFIG_LOAD");
 
                 LambdaConfig = new SimplexLambdaConfig();
-                LambdaConfig.LoadConfig();
+                LambdaConfig.Load();
 
-                if (!LambdaConfig.VerifyConfig())
+                if (!LambdaConfig.ValidateConfig())
                 {
+                    LambdaConfig = null;
                     return new SimplexResponse(rq)
                     {
                         Error = SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration)
