@@ -28,6 +28,7 @@ namespace SimplexLambda
 
     public class SimplexLambdaFunctions
     {
+        public static Func<string, string> ConfigLoadFunc { get; set; } = Environment.GetEnvironmentVariable;
         static SimplexLambdaConfig LambdaConfig;
         static List<string> errorNamesErrors;
 
@@ -35,46 +36,32 @@ namespace SimplexLambda
         {
             RequestDiagnostics diagInfo = new RequestDiagnostics();
             diagInfo.BeginDiag("REQUEST_OVERALL");
-
-            if (LambdaConfig == null)
+            SimplexResponse EndRequest(SimplexResponse rsp, bool overrideIncludeDiag = false)
             {
-                diagInfo.BeginDiag("CONFIG_LOAD");
-
-                LambdaConfig = new SimplexLambdaConfig();
-                LambdaConfig.Load();
-
-                if (!LambdaConfig.ValidateConfig())
-                {
-                    LambdaConfig = null;
-                    return new SimplexResponse(rq)
-                    {
-                        Error = SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration)
-                    };
-                }
-
-                errorNamesErrors = SimplexError.ValidateErrors();
-
-                diagInfo.EndDiag("CONFIG_LOAD");
+                if (rsp.Error == null)
+                    return new SimplexResponse(rq, SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration, "Error from handlers was null!"));
+                diagInfo.EndDiag("REQUEST_OVERALL");
+                if (overrideIncludeDiag || LambdaConfig.IncludeDiagnosticInfo)
+                    rsp.DiagInfo = diagInfo;
+                return rsp;
             }
 
-            if (errorNamesErrors.Count > 0)
-            {
-                StringBuilder b = new StringBuilder("The following values are not defined in the errors map: ");
-                foreach (string str in errorNamesErrors)
-                    b.Append($"{str}|");
-                b.Remove(b.Length - 1, 1);
-                return new SimplexResponse(rq)
-                {
-                    Error = SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration, b.ToString())
-                };
-            }
+            SimplexError err;
+
+            if (!LoadOrVerifyConfig(diagInfo, out err))
+                return EndRequest(new SimplexResponse(rq, err), true);
+
+            if (!VerifyErrorNames(diagInfo, out err))
+                return EndRequest(new SimplexResponse(rq, err));
 
             if (rq.RequestType == SimplexRequestType.PingPong)
-            {
-                diagInfo.EndDiag("REQUEST_OVERALL");
-                return new SimplexResponse(rq) { Error = SimplexError.OK, DiagInfo = diagInfo };
-            }
+                return EndRequest(new SimplexResponse(rq, SimplexError.OK));
 
+            return EndRequest(HandleRequest(rq, diagInfo));
+        }
+
+        public SimplexResponse HandleRequest(SimplexRequest rq, RequestDiagnostics diagInfo)
+        {
             DBWrapper db = new DBWrapper(LambdaConfig);
 
             SimplexRequestContext context = new SimplexRequestContext()
@@ -86,29 +73,51 @@ namespace SimplexLambda
                 DiagInfo = diagInfo,
             };
 
-            SimplexResponse rsp;
-
             try
             {
-                rsp = Handlers.HandleRequest(context);
+                return Handlers.HandleRequest(context);
             }
             catch (Exception ex)
             {
                 context.Log.Error(ex);
-                rsp = new SimplexResponse(rq) { Error = SimplexError.GetError(SimplexErrorCode.Unknown), Payload = LambdaConfig.DetailedErrors ? ex.ToString() : ex.Message };
+                return new SimplexResponse(rq, SimplexError.GetError(SimplexErrorCode.Unknown, LambdaConfig.DetailedErrors ? ex.ToString() : ex.Message));
             }
+        }
 
-            if (rsp.Error == null)
+        public SimplexError LoadOrVerifyConfig(RequestDiagnostics diagInfo, out SimplexError e)
+        {
+            if (LambdaConfig == null)
             {
-                rsp = new SimplexResponse(rq) { Error = SimplexError.GetError(SimplexErrorCode.ResponseMalformed, "Returned error was null!") };
+                diagInfo.BeginDiag("CONFIG_LOAD");
+
+                LambdaConfig = new SimplexLambdaConfig();
+                LambdaConfig.Load();
+
+                e = LambdaConfig.ValidateConfig();
+
+                diagInfo.EndDiag("CONFIG_LOAD");
             }
+            else
+                e = SimplexError.OK;
 
-            if (LambdaConfig.IncludeDiagnosticInfo)
-                rsp.DiagInfo = diagInfo;
+            return e;
+        }
 
-            diagInfo.EndDiag("REQUEST_OVERALL");
+        public SimplexError VerifyErrorNames(RequestDiagnostics diagInfo, out SimplexError e)
+        {
+            errorNamesErrors = SimplexError.ValidateErrors();
+            if (errorNamesErrors.Count > 0)
+            {
+                StringBuilder b = new StringBuilder("The following values are not defined in the errors map: ");
+                foreach (string str in errorNamesErrors)
+                    b.Append($"{str}|");
+                b.Remove(b.Length - 1, 1);
+                e = SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration, b.ToString());
+            }
+            else
+                e = SimplexError.OK;
 
-            return rsp;
+            return e;
         }
     }
 }

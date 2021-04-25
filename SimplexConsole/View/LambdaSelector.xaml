@@ -7,29 +7,47 @@
         mc:Ignorable="d"
         Title="Select Lambda" Height="450" Width="250" Padding="0"
         DataContext="{Binding RelativeSource={x:Static RelativeSource.Self}}" WindowStyle="ToolWindow" 
-        HorizontalContentAlignment="Stretch" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-    <Grid Margin="10,10,10,10" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+        HorizontalContentAlignment="Stretch" ScrollViewer.VerticalScrollBarVisibility="Disabled" ResizeMode="NoResize">
+    <Grid ScrollViewer.VerticalScrollBarVisibility="Disabled">
         <Grid.RowDefinitions>
-            <RowDefinition Height="25"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="35"/>
-            <RowDefinition Height="25"/>
+            <RowDefinition Height="1*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
-        <StackPanel Grid.Row="0" Orientation="Horizontal" DockPanel.Dock="Top" VerticalAlignment="Top" Height="25" Margin="0,0,10,0">
+        <Grid Margin="10,10,10,10" ScrollViewer.VerticalScrollBarVisibility="Disabled" Grid.Row="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="25"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="35"/>
+                <RowDefinition Height="25"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Row="0" Orientation="Horizontal" DockPanel.Dock="Top" VerticalAlignment="Top" Height="25" Margin="0,0,10,0">
                 <Label Content="Region:"/>
                 <ComboBox x:Name="CmbRegions" SelectionChanged="CmbRegions_SelectionChanged" Width="150" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
-        </StackPanel>
-        <ListBox x:Name="ListFunctions" Grid.Row="1" ItemsSource="{Binding Path=Lambdas}" DockPanel.Dock="Top" VerticalAlignment="Stretch" Margin="0,10,0,5" SelectionChanged="ListBox_SelectionChanged" >
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <Label Content="{Binding Path=FunctionName}"/>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
-        <Button Content="+ Create New" Grid.Row="2" HorizontalAlignment="Right" DockPanel.Dock="Bottom" Height="25" Width="98" Margin="0,0,0,10"/>
-        <Button Content="Select" Grid.Row="3" HorizontalAlignment="Stretch" DockPanel.Dock="Bottom" Background="#FFA5DCA5" IsEnabled="{Binding Path=SelectEnabled}" Click="Button_Click"/>
+            </StackPanel>
+            <ListBox x:Name="ListFunctions" Grid.Row="1" ItemsSource="{Binding Path=Lambdas}" DockPanel.Dock="Top" VerticalAlignment="Stretch" Margin="0,10,0,5" SelectionChanged="ListBox_SelectionChanged" >
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Label Content="{Binding Path=FunctionName}"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <Button Content="+ Create New" Grid.Row="2" HorizontalAlignment="Right" DockPanel.Dock="Bottom" Height="25" Width="98" Margin="0,0,0,10"/>
+            <Button Content="Select" Grid.Row="3" HorizontalAlignment="Stretch" DockPanel.Dock="Bottom" Background="#FFA5DCA5" IsEnabled="{Binding Path=SelectEnabled}" Click="Button_Click"/>
+        </Grid>
+        <StatusBar x:Name="Status" VerticalAlignment="Bottom" Padding="0" HorizontalAlignment="Stretch" Grid.Row="1">
+            <StatusBarItem>
+                <Grid Margin="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="22"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="BtnPopoutStatus" Click="BtnPopoutStatus_Click" Content="⏭" Margin="0" Grid.Column="0" Padding="0" HorizontalAlignment="Stretch" BorderThickness="0,0,0,0"/>
+                    <Label Content="{Binding Path=StatusText}" Width="{Binding Path=StatusTxtWidth}" Grid.Column="1" Padding="0" HorizontalAlignment="Left" HorizontalContentAlignment="Stretch" Margin="5,0,0,0" />
+                </Grid>
+            </StatusBarItem>
+        </StatusBar>
     </Grid>
 </Window>

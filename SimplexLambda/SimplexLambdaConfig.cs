@@ -12,23 +12,21 @@ namespace SimplexLambda
 
     public class SimplexLambdaConfig
     {
-        public ValidatedConfigValue<string> SimplexTable { get; } = new ValidatedConfigValue<string>(string.IsNullOrEmpty, (str) => str);
-        public ValidatedConfigValue<string> PrivateKeyXML { get; } = new ValidatedConfigValue<string>(string.IsNullOrEmpty, (str) => str);
-        public ValidatedConfigValue<bool> DetailedErrors { get; } = new ValidatedConfigValue<bool>((obj) => true, (str) => str == "true");
-        public ValidatedConfigValue<bool> IncludeDiagnosticInfo { get; } = new ValidatedConfigValue<bool>((obj) => true, (str) => str == "true");
-        public ValidatedConfigValue<int> CredentialTimeoutMinutes { get; } = new ValidatedConfigValue<int>((num) => num > 0, (str) => { int.TryParse(str, out int value); return value; }, 0);
-        public ValidatedConfigValue<int> CredentialDurationHours { get; } = new ValidatedConfigValue<int>((num) => num > 0, (str) => { int.TryParse(str, out int value); return value; }, 0);
-        //public string SimplexTable { get; private set; }
-        //public string PrivateKeyXML { get; private set; }
-        //public bool DetailedErrors { get; private set; }
-        //public bool IncludeDiagnosticInfo { get; private set; }
-        //public int CredentialTimeoutMinutes { get; private set; }
-        //public int CredentialDurationHours { get; private set; }
+        [MinLength(1), ConfigValueString]
+        public string SimplexTable { get; private set; } = "";
+        [MinLength(1), ConfigValueString]
+        public string PrivateKeyXML { get; private set; } = "";
+        [ConfigValueBool]
+        public bool DetailedErrors { get; private set; } = false;
+        [ConfigValueBool]
+        public bool IncludeDiagnosticInfo { get; private set; } = false;
+        [Range(1, int.MaxValue), ConfigValueInt]
+        public int CredentialTimeoutMinutes { get; private set; } = 10;
+        [Range(1, int.MaxValue), ConfigValueInt]
+        public int CredentialDurationHours { get; private set; } = 8;
 
-        public ValidatedConfigValueComplex<SimplexServiceConfig> ServiceConfig { get; } = new ValidatedConfigValueComplex<SimplexServiceConfig>
-            (SimplexValidator.ValidateObject,
-            SimplexServiceConfig.Load);
-        //public SimplexServiceConfig ServiceConfig { get; private set; }
+        [ConfigClass]
+        public SimplexServiceConfig ServiceConfig { get; private set; }
 
         public RSACryptoServiceProvider RSA { get; private set; }
 
@@ -60,9 +58,37 @@ namespace SimplexLambda
             //};
         }
 
-        public bool ValidateConfig()
+        List<ValidationResult> results;
+
+        private SimplexError ProcessResults(List<ValidationResult> list)
         {
-            return this.ValidateObject();
+            if (list == null || list.Count == 0)
+                return SimplexError.OK;
+
+            StringBuilder b = new StringBuilder();
+            b.AppendLine("Lambda config validation failed!");
+            foreach (var r in list)
+                b.AppendLine(r.ToString());
+
+            return SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration, b.ToString());
+        }
+
+        public SimplexError ValidateConfig()
+        {
+            if (results == null)
+            {
+                ValidationContext ct = new ValidationContext(this);
+                var res = new List<ValidationResult>();
+
+                bool success = Validator.TryValidateObject(this, ct, res);
+
+                if (success)
+                    results = new List<ValidationResult>();
+                else
+                    results = res;
+            }
+
+            return ProcessResults(results);
 
             //if (string.IsNullOrEmpty(PrivateKeyXML)) return false;
             //if (string.IsNullOrEmpty(ServiceConfig.CryptKeyXML)) return false;

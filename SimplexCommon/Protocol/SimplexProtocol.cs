@@ -96,6 +96,11 @@ namespace Simplex.Protocol
             RequestID = rq.RequestID;
             RequestType = rq.RequestType;
         }
+
+        public SimplexResponse(SimplexRequest rq, SimplexError err) : this(rq)
+        {
+            Error = err;
+        }
     }
 
     public class SimplexResponse<T> : SimplexResponse where T : class

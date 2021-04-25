@@ -13,7 +13,7 @@ namespace SimplexLambda.RequestHandlers
             return new SimplexResponse(context.Request)
             {
                 Error = SimplexError.OK,
-                Payload = context.LambdaConfig.ServiceConfig.ToValue()
+                Payload = context.LambdaConfig.ServiceConfig
             };
         }
     }

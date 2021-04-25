@@ -5,52 +5,28 @@ using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 using System.Text.Json;
 using Simplex.Protocol;
+using System.ComponentModel.DataAnnotations;
 
 namespace Simplex
 {
+    public class AuthServiceParams
+    {
+        public AuthType Type { get; set; }
+        public bool Enabled { get; set; }
+        public string OAuthAuthenticationURL { get; set; }
+        public string OAuthTokenURL { get; set; }
+        public string OAuthScopeString { get; set; }
+
+        AuthServiceParams() { }
+    }
+
     public class SimplexServiceConfig
     {
-        public class OAuthURLParams
-        {
-            public AuthType Type { get; set; }
-            public string AuthURL { get; set; }
-            public string TokenURL { get; set; }
-            public string ScopeString { get; set; }
 
-            OAuthURLParams() { }
-            public OAuthURLParams(AuthType type, string authURL, string tokenURL, string scopeString)
-            {
-                Type = type;
-                AuthURL = authURL;
-                TokenURL = tokenURL;
-                ScopeString = scopeString;
-            }
-        }
-
-        [JsonIgnore]
-        public ValidatedConfigValue<string> PublicKeyXML 
-        {
-            get;
-            set;
-        } = new ValidatedConfigValue<string>(string.IsNullOrEmpty, (str) => str, "");
-        [JsonIgnore]
-        public ValidatedConfigValueComplex<List<OAuthURLParams>> OAuthURLs 
-        {
-            get;
-            set;
-        } = new ValidatedConfigValueComplex<List<OAuthURLParams>>((obj) => true, LoadOauthParams, new List<OAuthURLParams>());
-
-        public string _publicKeyXML
-        {
-            get { return PublicKeyXML.ToValue(); }
-            set { PublicKeyXML.SetValue(value); }
-        }
-
-        public List<OAuthURLParams> _oAuthURLs
-        {
-            get { return OAuthURLs.ToValue(); }
-            set { OAuthURLs.SetValue(value); }
-        }
+        [MinLength(1), ConfigValueString]
+        public string PublicKeyXML { get; set; } = "";
+        [MinLength(0), ConfigValueJson(typeof(AuthServiceParams[]))]
+        public AuthServiceParams[] AuthParams { get; set; } = new AuthServiceParams[0];
 
         private RSACryptoServiceProvider _rsa;
         [JsonIgnore]
@@ -71,20 +47,13 @@ namespace Simplex
             }
         }
 
-        public static SimplexServiceConfig Load(string origName, Func<string, string> loadFunc)
+        public AuthServiceParams GetAuthParams(AuthType type)
         {
-            SimplexServiceConfig cfg = new SimplexServiceConfig();
-            cfg.LoadConfig(loadFunc);
-            return cfg;
-        }
+            foreach (var a in AuthParams)
+                if (a.Type == type)
+                    return a;
 
-        public static List<OAuthURLParams> LoadOauthParams(string origName, Func<string, string> loadFunc)
-        {
-            string str = loadFunc(origName);
-            if (string.IsNullOrEmpty(str))
-                return new List<OAuthURLParams>();
-
-            return JsonSerializer.Deserialize<List<OAuthURLParams>>(str);
+            return null;
         }
     }
 }
