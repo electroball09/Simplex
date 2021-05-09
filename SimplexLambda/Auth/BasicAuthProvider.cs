@@ -11,18 +11,20 @@ namespace SimplexLambda.Auth
 {
     public class BasicAuthProvider : AuthProvider
     {
-        public override SimplexError AuthUser(AuthRequest rq, AuthAccount acc, SimplexRequestContext context)
+        public override SimplexError AuthUser(AuthRequest rq, AuthAccount acc, SimplexRequestContext context, out SimplexError err)
         {
-            context.DiagInfo.BeginDiag("BASIC_USER_AUTH");
+            var diag = context.DiagInfo.BeginDiag("BASIC_USER_AUTH");
 
             string hash = LambdaUtil.HashInput(rq.AuthSecret, acc.Salt);
 
-            context.DiagInfo.EndDiag("BASIC_USER_AUTH");
-
             if (hash != acc.Secret)
-                return SimplexError.GetError(SimplexErrorCode.InvalidAuthCredentials, "Passwords do not match");
+                err = SimplexError.GetError(SimplexErrorCode.InvalidAuthCredentials, "Passwords do not match");
+            else
+                err = SimplexError.OK;
 
-            return SimplexError.OK;
+            context.DiagInfo.EndDiag(diag);
+
+            return err;
         }
     }
 }

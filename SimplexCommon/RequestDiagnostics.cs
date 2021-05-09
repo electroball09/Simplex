@@ -6,46 +6,46 @@ namespace Simplex
 {
     public class RequestDiagnostics
     {
-        public class DiagInfo
+        public struct DiagHandle
         {
             public string DiagID { get; set; }
             public double TimeTakenMS { get; set; }
 
-            DiagInfo() { }
+            private DateTime StartTime { get; }
 
-            public DiagInfo(string id, TimeSpan time)
+            public DiagHandle(string id)
             {
                 DiagID = id;
-                TimeTakenMS = time.TotalMilliseconds;
+                TimeTakenMS = 0;
+                StartTime = DateTime.Now;
+            }
+
+            public DiagHandle(DiagHandle handle)
+            {
+                DiagID = handle.DiagID;
+                TimeTakenMS = (DateTime.Now - handle.StartTime).TotalMilliseconds;
+                StartTime = DateTime.MinValue;
             }
         }
-        Dictionary<string, DateTime> diags = new Dictionary<string, DateTime>();
 
-        public List<DiagInfo> DiagInfos { get; set; } = new List<DiagInfo>();
+        public List<DiagHandle> EndedHandles { get; set; } = new List<DiagHandle>();
 
         public RequestDiagnostics() { }
 
-        public void BeginDiag(string id)
+        public DiagHandle BeginDiag(string id)
         {
-            if (diags.ContainsKey(id))
-                return;
-
-            diags.Add(id, DateTime.Now);
+            return new DiagHandle(id);
         }
 
-        public void EndDiag(string id)
+        public void EndDiag(DiagHandle handle)
         {
-            if (!diags.ContainsKey(id))
-                return;
-
-            DiagInfos.Add(new DiagInfo(id, DateTime.Now - diags[id]));
-            diags.Remove(id);
+            EndedHandles.Add(new DiagHandle(handle));
         }
 
         public void DebugLog(ISimplexLogger log)
         {
             log.Debug("-Request diag info");
-            foreach (var d in DiagInfos)
+            foreach (var d in EndedHandles)
                 log.Debug($"  {d.DiagID} - {d.TimeTakenMS} ms");
         }
     }

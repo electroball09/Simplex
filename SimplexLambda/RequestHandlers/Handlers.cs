@@ -10,6 +10,8 @@ namespace SimplexLambda.RequestHandlers
     {
         public static SimplexResponse HandleRequest(SimplexRequestContext context)
         {
+            var diagHandle = context.DiagInfo.BeginDiag("REQUEST_HANDLER");
+
             context.Log.Debug($"handling request type of {context.Request.RequestType}");
 
             RequestHandler handler = null;
@@ -25,10 +27,15 @@ namespace SimplexLambda.RequestHandlers
 
             context.Log.Debug($"handler - {handler?.GetType()}");
 
+            SimplexResponse rsp;
             if (handler == null)
-                return new SimplexResponse(context.Request) { Error = SimplexError.GetError(SimplexErrorCode.InvalidRequestType) };
+                rsp = new SimplexResponse(context.Request, SimplexError.GetError(SimplexErrorCode.InvalidRequestType));
+            else
+                rsp = handler.HandleRequest(context);
 
-            return handler.HandleRequest(context);
+            context.DiagInfo.EndDiag(diagHandle);
+
+            return rsp;
         }
     }
 

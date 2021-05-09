@@ -99,7 +99,7 @@ namespace Simplex
 
         public static implicit operator bool(SimplexError e)
         {
-            return e.Code != SimplexErrorCode.OK;
+            return e.Code == SimplexErrorCode.OK;
         }
 
         public override string ToString()

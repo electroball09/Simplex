@@ -32,15 +32,16 @@ namespace SimplexLambda
             };
         }
 
-        public SimplexError LoadItem<T>(T obj, out T Item, SimplexRequestContext context)
+        public SimplexError LoadItem<T>(T obj, out T Item, SimplexRequestContext context, out SimplexError err)
         {
             string diagName = $"DB_LOAD_{__count++} [{obj.GetType().Name}]";
-            context.DiagInfo.BeginDiag(diagName);
+            var diagHandle = context.DiagInfo.BeginDiag(diagName);
             var task = Context.LoadAsync(obj, Cfg);
             task.Wait();
             Item = task.Result;
-            context.DiagInfo.EndDiag(diagName);
-            return task.Result == null ? SimplexError.GetError(SimplexErrorCode.DBItemNonexistent) : SimplexError.OK;
+            err = task.Result == null ? SimplexError.GetError(SimplexErrorCode.DBItemNonexistent) : SimplexError.OK;
+            context.DiagInfo.EndDiag(diagHandle);
+            return err;
         }
 
         public SimplexError SaveItem<T>(T obj)

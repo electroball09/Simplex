@@ -24,6 +24,20 @@ namespace SimplexLambda
         public ISimplexLogger Log { get; set; }
         public SimplexLambdaConfig LambdaConfig { get; set; }
         public RequestDiagnostics DiagInfo { get; set; }
+
+        public SimplexResponse EndRequest(SimplexError err, object payload, RequestDiagnostics.DiagHandle diagHandle)
+        {
+            DiagInfo.EndDiag(diagHandle);
+            if (!err)
+                return new SimplexResponse(Request, err);
+            else
+                return new SimplexResponse(Request, err) { Payload = payload };
+        }
+
+        public T DeserializePayload<T>()
+        {
+            return JsonSerializer.Deserialize<T>(((JsonElement)Request.Payload).GetRawText());
+        }
     }
 
     public class SimplexLambdaFunctions
@@ -46,13 +60,13 @@ namespace SimplexLambda
             Logger.Debug("handling request");
 
             RequestDiagnostics diagInfo = new RequestDiagnostics();
-            diagInfo.BeginDiag("REQUEST_OVERALL");
+            var diagHandle = diagInfo.BeginDiag("REQUEST_OVERALL");
 
             SimplexResponse EndRequest(SimplexResponse rsp, bool overrideIncludeDiag = false)
             {
                 if (rsp.Error == null)
                     return new SimplexResponse(rq, SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration, "Error from handlers was null!"));
-                diagInfo.EndDiag("REQUEST_OVERALL");
+                diagInfo.EndDiag(diagHandle);
                 if (overrideIncludeDiag || LambdaConfig.IncludeDiagnosticInfo)
                     rsp.DiagInfo = diagInfo;
                 return rsp;
@@ -60,12 +74,12 @@ namespace SimplexLambda
 
             SimplexError err;
 
-            if (LoadOrVerifyConfig(diagInfo, out err))
+            if (!LoadOrVerifyConfig(diagInfo, out err))
                 return EndRequest(new SimplexResponse(rq, err), true);
 
             Logger.Debug($"config validated - {err.Code}");
 
-            if (VerifyErrorNames(diagInfo, out err))
+            if (!VerifyErrorNames(diagInfo, out err))
                 return EndRequest(new SimplexResponse(rq, err));
 
             Logger.Debug($"errors validated - {err.Code}");
@@ -93,8 +107,7 @@ namespace SimplexLambda
 
             try
             {
-                var rsp = Handlers.HandleRequest(context);
-                return rsp;
+                return Handlers.HandleRequest(context);
             }
             catch (Exception ex)
             {
@@ -107,26 +120,25 @@ namespace SimplexLambda
         {
             if (LambdaConfig == null)
             {
-                diagInfo.BeginDiag("CONFIG_LOAD");
+                var diagHandle = diagInfo.BeginDiag("CONFIG_LOAD");
 
                 LambdaConfig = new SimplexLambdaConfig();
                 LambdaConfig.Load(ConfigLoadFunc);
 
                 e = LambdaConfig.ValidateConfig();
 
-                if (e)
-                    LambdaConfig = null;
-
-                diagInfo.EndDiag("CONFIG_LOAD");
+                diagInfo.EndDiag(diagHandle);
             }
             else
-                e = SimplexError.OK;
+                e = LambdaConfig.ValidateConfig();
 
             return e;
         }
 
         public SimplexError VerifyErrorNames(RequestDiagnostics diagInfo, out SimplexError e)
         {
+            var diagHandle = diagInfo.BeginDiag("VERIFY_ERROR_NAMES");
+
             errorNamesErrors = SimplexError.ValidateErrors();
             if (errorNamesErrors.Count > 0)
             {
@@ -138,6 +150,8 @@ namespace SimplexLambda
             }
             else
                 e = SimplexError.OK;
+
+            diagInfo.EndDiag(diagHandle);
 
             return e;
         }

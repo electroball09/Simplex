@@ -23,6 +23,6 @@ namespace SimplexLambda.Auth
             return (AuthProvider)Activator.CreateInstance(providerMap[authType]);
         }
 
-        public abstract SimplexError AuthUser(AuthRequest rq, AuthAccount acc, SimplexRequestContext context);
+        public abstract SimplexError AuthUser(AuthRequest rq, AuthAccount acc, SimplexRequestContext context, out SimplexError err);
     }
 }

@@ -79,7 +79,7 @@ namespace Simplex
                     Logger.Debug($"-request ID {request.RequestID} took {(DateTime.Now - request.RequestedTime).TotalMilliseconds} ms");
                     var rsp = JsonSerializer.Deserialize<SimplexResponse<T>>(json);
                     rsp.DiagInfo?.DebugLog(Logger);
-                    if (!rsp.Error && !rsp.DeserializePayload())
+                    if (rsp.Error && !rsp.DeserializePayload())
                     {
                         Logger.Error($"Response type mismatch! Wanted type: {typeof(T).Name}  received type: {rsp.PayloadType}");
                         rsp.Payload = null;

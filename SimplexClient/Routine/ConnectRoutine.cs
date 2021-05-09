@@ -13,7 +13,7 @@ namespace Simplex.Routine
         {
             SimplexRequest rq = new SimplexRequest(SimplexRequestType.GetServiceConfig, null);
             var cfg = await client.SendRequest<SimplexServiceConfig>(rq);
-            if (cfg.Error != SimplexError.OK)
+            if (!cfg.Error)
                 cfg.Error.Throw();
             if (cfg.Item == null)
                 throw new Exception("Item was null!");
@@ -24,7 +24,7 @@ namespace Simplex.Routine
         {
             SimplexRequest rq = new SimplexRequest(SimplexRequestType.Auth, authRq);
             var rsp = await client.SendRequest<UserCredentials>(rq);
-            if (rsp.Error)
+            if (!rsp.Error)
             {
                 if (rsp.Error == SimplexError.GetError(SimplexErrorCode.AuthAccountNonexistent))
                     client.Config.Logger.Warn("Authentication attempt failed!");

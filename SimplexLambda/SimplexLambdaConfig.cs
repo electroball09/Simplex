@@ -36,18 +36,30 @@ namespace SimplexLambda
         }
 
         List<ValidationResult> results;
+        string errorStr = null;
 
         private SimplexError ProcessResults(List<ValidationResult> list)
         {
             if (list.Count == 0)
+            {
+                if (RSA == null)
+                {
+                    RSA = new RSACryptoServiceProvider();
+                    RSA.FromXmlString(PrivateKeyXML);
+                }
+
                 return SimplexError.OK;
+            }
+            if (errorStr == null)
+            {
+                StringBuilder b = new StringBuilder();
+                b.AppendLine("Lambda config validation failed!");
+                foreach (var r in list)
+                    b.AppendLine(r.ToString());
+                errorStr = b.ToString();
+            }
 
-            StringBuilder b = new StringBuilder();
-            b.AppendLine("Lambda config validation failed!");
-            foreach (var r in list)
-                b.AppendLine(r.ToString());
-
-            return SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration, b.ToString());
+            return SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration, errorStr);
         }
 
         public SimplexError ValidateConfig()

@@ -13,61 +13,48 @@ namespace SimplexLambda.RequestHandlers
     {
         public override SimplexResponse HandleRequest(SimplexRequestContext context)
         {
-            context.DiagInfo.BeginDiag("AUTH_REQUEST_HANDLER");
-            void __EndDiag() => context.DiagInfo.EndDiag("AUTH_REQUEST_HANDLER");
+            var diagHandle = context.DiagInfo.BeginDiag("AUTH_REQUEST_HANDLER");
 
-            AuthRequest authRq = JsonSerializer.Deserialize<AuthRequest>(((JsonElement)context.Request.Payload).GetRawText());
-            var (decryptErr, str) = SimplexUtil.DecryptString(context.LambdaConfig.RSA, authRq.AuthSecret);
-            authRq.AuthSecret = str;
-
-            if (decryptErr)
+            SimplexResponse EndRequest(SimplexError err, object payload = null)
             {
-                __EndDiag();
-                return new SimplexResponse(context.Request) { Error = SimplexError.GetError(SimplexErrorCode.InvalidAuthCredentials) };
+                context.DiagInfo.EndDiag(diagHandle);
+                if (!err)
+                    return new SimplexResponse(context.Request, err);
+                else
+                    return new SimplexResponse(context.Request, err) { Payload = payload };
             }
+
+            AuthRequest authRq = context.DeserializePayload<AuthRequest>();
+
+            if (!SimplexUtil.DecryptString(context.LambdaConfig.RSA, authRq.AuthSecret, out string decryptedSecret, out var decryptError))
+            {
+                return EndRequest(SimplexError.GetError(SimplexErrorCode.InvalidAuthCredentials));
+            }
+            authRq.AuthSecret = decryptedSecret;
 
             AuthAccount acc = AuthAccount.Create(authRq.AuthType, authRq.AuthID);
 
-            var loadErr = context.DB.LoadItem(acc, out acc, context);
-            if (loadErr)
+            if (!context.DB.LoadItem(acc, out acc, context, out var loadErr))
             {
-                __EndDiag();
-
                 if (loadErr.Code == SimplexErrorCode.DBItemNonexistent)
-                    return new SimplexResponse(context.Request) { Error = SimplexError.GetError(SimplexErrorCode.AuthAccountNonexistent) };
-                else
-                    return new SimplexResponse(context.Request) { Error = loadErr };
+                    loadErr = SimplexError.GetError(SimplexErrorCode.AuthAccountNonexistent);
+
+                return EndRequest(loadErr);
             }
 
-            AuthProvider provider = AuthProvider.GetProvider(authRq.AuthType);
+            if (!AuthProvider.GetProvider(authRq.AuthType).AuthUser(authRq, acc, context, out var authErr))
+                return EndRequest(authErr);
 
-            var authErr = provider.AuthUser(authRq, acc, context);
-            if (authErr)
-            {
-                __EndDiag();
-                return new SimplexResponse(context.Request) { Error = authErr };
-            }
-
-            var (tokenErr, token) = LambdaUtil.GenerateAccessToken(acc.ConnectedUserGUID, context);
-            if (tokenErr)
-            {
-                __EndDiag();
-                return new SimplexResponse(context.Request) { Error = tokenErr };
-            }
+            if (!LambdaUtil.GenerateAccessToken(acc.ConnectedUserGUID, context, out var accessToken, out var tokenErr))
+                return EndRequest(tokenErr);
 
             UserCredentials cred = new UserCredentials()
             {
                 UserGUID = acc.ConnectedUserGUID,
-                AuthToken = token.Token
+                AuthToken = accessToken.Token
             };
 
-            __EndDiag();
-
-            return new SimplexResponse(context.Request)
-            {
-                Error = SimplexError.OK,
-                Payload = cred,
-            };
+            return EndRequest(SimplexError.OK, cred);
         }
     }
 }

@@ -38,6 +38,7 @@ namespace Simplex
             Config = cfg.Copy();
 
             transport = cfg.Transport;
+            transport.Logger = cfg.Logger;
             transport.Initialize();
         }
 
@@ -121,7 +122,8 @@ namespace Simplex
             return Task.Run
                 (async () =>
                 {
-                    string encSecret = SimplexUtil.EncryptData(ServiceConfig.RSA, secret);
+                    if (!SimplexUtil.EncryptData(ServiceConfig.RSA, secret, out string encSecret, out var encryptErr))
+                        encryptErr.Throw();
 
                     AuthRequest rq = new AuthRequest()
                     {
@@ -134,7 +136,7 @@ namespace Simplex
                     {
                         var rsp = await Routines.AuthAccount(this, rq);
 
-                        if (!rsp.Error)
+                        if (rsp.Error)
                         {
                             LoggedInUser = rsp.Item;
                             LoggedInCredentials = rq;

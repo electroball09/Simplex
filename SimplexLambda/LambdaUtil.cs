@@ -13,64 +13,62 @@ namespace SimplexLambda
         static HMACMD5 md5 = new HMACMD5();
         static SHA256 sha = SHA256.Create();
 
-        public static SimplexError ValidateAccessToken(Guid guid, string tokenStr, SimplexRequestContext context)
+        public static SimplexError ValidateAccessToken(Guid guid, string tokenStr, SimplexRequestContext context, out SimplexError err)
         {
-            const string diagName = "VALIDATE_ACCESS_TOKEN";
-            context.DiagInfo.BeginDiag(diagName);
+            var diagHandle = context.DiagInfo.BeginDiag("VALIDATE_ACCESS_TOKEN");
 
             UserAccessToken token = new UserAccessToken()
             {
                 GUID = guid,
             };
 
-            var err = context.DB.LoadItem(token, out token, context);
-
-            if (err)
+            if (!context.DB.LoadItem(token, out token, context, out err))
             {
-                context.DiagInfo.EndDiag(diagName);
-
                 if (err.Code == SimplexErrorCode.DBItemNonexistent)
-                    return SimplexError.GetError(SimplexErrorCode.AccessTokenInvalid);
-
-                return err;
+                    err = SimplexError.GetError(SimplexErrorCode.AccessTokenInvalid);
+                goto end;
             }
 
             if (tokenStr != token.Token)
             {
-                context.DiagInfo.EndDiag(diagName);
-                return SimplexError.GetError(SimplexErrorCode.AccessTokenInvalid);
+                err = SimplexError.GetError(SimplexErrorCode.AccessTokenInvalid);
+                goto end;
             }
 
             if (DateTime.Now - token.LastAccessed > token.Timeout
                 || DateTime.Now - token.Created > token.Duration)
             {
-                context.DiagInfo.EndDiag(diagName);
-                return SimplexError.GetError(SimplexErrorCode.AccessTokenInvalid);
+                err = SimplexError.GetError(SimplexErrorCode.AccessTokenInvalid);
+                goto end;
             }
 
             token.LastAccessed = DateTime.Now;
             err = context.DB.SaveItem(token);
 
-            context.DiagInfo.EndDiag(diagName);
-
-            if (err)
+            if (!err)
             {
-                return SimplexError.GetError(SimplexErrorCode.AccessTokenInvalid);
+                err = SimplexError.GetError(SimplexErrorCode.AccessTokenInvalid);
+                goto end;
             }
 
+            context.DiagInfo.EndDiag(diagHandle);
+
             return SimplexError.OK;
+
+        end:
+            context.DiagInfo.EndDiag(diagHandle);
+            return err;
         }
 
-        public static (SimplexError err, UserAccessToken token) GenerateAccessToken(Guid guid, SimplexRequestContext context)
+        public static SimplexError GenerateAccessToken(Guid guid, SimplexRequestContext context, out UserAccessToken accessToken, out SimplexError err)
         {
-            const string diagName = "GENERATE_ACCESS_TOKEN";
-            context.DiagInfo.BeginDiag(diagName);
+            var diagHandle = context.DiagInfo.BeginDiag("GENERATE_ACCESS_TOKEN");
 
             Guid tokenGuid = Guid.NewGuid();
             byte[] hash = md5.ComputeHash(tokenGuid.ToByteArray());
             string token = BitConverter.ToString(hash).Replace("-", "");
 
-            var newToken = new UserAccessToken()
+            accessToken = new UserAccessToken()
             {
                 GUID = guid,
                 Token = token,
@@ -80,11 +78,12 @@ namespace SimplexLambda
                 Timeout = TimeSpan.FromMinutes(context.LambdaConfig.CredentialTimeoutMinutes)
             };
 
-            context.DB.SaveItem(newToken);
+            context.DB.SaveItem(accessToken);
 
-            context.DiagInfo.EndDiag(diagName);
+            context.DiagInfo.EndDiag(diagHandle);
 
-            return (SimplexError.OK, newToken);
+            err = SimplexError.OK;
+            return err;
         }
 
         public static string HashInput(string input, string salt)

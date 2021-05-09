@@ -6,7 +6,7 @@ using Simplex.User;
 
 namespace SimplexLambda.User
 {
-    public class UserAccessToken : UserDataItem<UserAccessToken>
+    public class UserAccessToken : DBUserDataItem<UserAccessToken>
     {
         public string Token { get; set; }
 
