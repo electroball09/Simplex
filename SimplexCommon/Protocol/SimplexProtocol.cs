@@ -32,8 +32,6 @@ namespace Simplex.Protocol
 
         [JsonIgnore]
         public DateTime RequestedTime { get; }
-        [JsonIgnore]
-        public Action<SimplexResponse> Callback { get; set; }
 
         [Obsolete("don't use this")]
         protected SimplexRequest() { }
@@ -44,11 +42,6 @@ namespace Simplex.Protocol
             RequestedTime = DateTime.Now;
             RequestType = rqType;
             Payload = payload;
-        }
-
-        public SimplexRequest(SimplexRequestType rqType, object payload, Action<SimplexResponse> callback) : this(rqType, payload)
-        {
-            Callback = callback;
         }
     }
 

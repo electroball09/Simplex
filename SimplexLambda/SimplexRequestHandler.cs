@@ -29,13 +29,25 @@ namespace SimplexLambda
     public class SimplexLambdaFunctions
     {
         public static Func<string, string> ConfigLoadFunc { get; set; } = Environment.GetEnvironmentVariable;
+        public static ISimplexLogger Logger { get; set; } = new ConsoleLogger();
         static SimplexLambdaConfig LambdaConfig;
         static List<string> errorNamesErrors;
 
+        ILambdaContext context;
+
         public SimplexResponse SimplexRequestHandler(SimplexRequest rq, ILambdaContext ct)
         {
+            context = ct;
+            return SimplexHandler(rq);
+        }
+
+        public SimplexResponse SimplexHandler(SimplexRequest rq)
+        {
+            Logger.Debug("handling request");
+
             RequestDiagnostics diagInfo = new RequestDiagnostics();
             diagInfo.BeginDiag("REQUEST_OVERALL");
+
             SimplexResponse EndRequest(SimplexResponse rsp, bool overrideIncludeDiag = false)
             {
                 if (rsp.Error == null)
@@ -48,14 +60,20 @@ namespace SimplexLambda
 
             SimplexError err;
 
-            if (!LoadOrVerifyConfig(diagInfo, out err))
+            if (LoadOrVerifyConfig(diagInfo, out err))
                 return EndRequest(new SimplexResponse(rq, err), true);
 
-            if (!VerifyErrorNames(diagInfo, out err))
+            Logger.Debug($"config validated - {err.Code}");
+
+            if (VerifyErrorNames(diagInfo, out err))
                 return EndRequest(new SimplexResponse(rq, err));
+
+            Logger.Debug($"errors validated - {err.Code}");
 
             if (rq.RequestType == SimplexRequestType.PingPong)
                 return EndRequest(new SimplexResponse(rq, SimplexError.OK));
+
+            Logger.Debug("not ping pong");
 
             return EndRequest(HandleRequest(rq, diagInfo));
         }
@@ -68,14 +86,15 @@ namespace SimplexLambda
             {
                 Request = rq,
                 DB = db,
-                Log = new ConsoleLogger(),
+                Log = Logger,
                 LambdaConfig = LambdaConfig,
                 DiagInfo = diagInfo,
             };
 
             try
             {
-                return Handlers.HandleRequest(context);
+                var rsp = Handlers.HandleRequest(context);
+                return rsp;
             }
             catch (Exception ex)
             {
@@ -91,9 +110,12 @@ namespace SimplexLambda
                 diagInfo.BeginDiag("CONFIG_LOAD");
 
                 LambdaConfig = new SimplexLambdaConfig();
-                LambdaConfig.Load();
+                LambdaConfig.Load(ConfigLoadFunc);
 
                 e = LambdaConfig.ValidateConfig();
+
+                if (e)
+                    LambdaConfig = null;
 
                 diagInfo.EndDiag("CONFIG_LOAD");
             }

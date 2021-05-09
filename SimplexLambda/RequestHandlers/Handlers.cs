@@ -10,16 +10,20 @@ namespace SimplexLambda.RequestHandlers
     {
         public static SimplexResponse HandleRequest(SimplexRequestContext context)
         {
+            context.Log.Debug($"handling request type of {context.Request.RequestType}");
+
             RequestHandler handler = null;
             switch (context.Request.RequestType)
             {
-                case (SimplexRequestType.Auth):
-                    handler = new AuthRequestHandler();
-                    break;
                 case (SimplexRequestType.GetServiceConfig):
                     handler = new ServiceConfigRequestHandler();
                     break;
+                case (SimplexRequestType.Auth):
+                    handler = new AuthRequestHandler();
+                    break;
             }
+
+            context.Log.Debug($"handler - {handler?.GetType()}");
 
             if (handler == null)
                 return new SimplexResponse(context.Request) { Error = SimplexError.GetError(SimplexErrorCode.InvalidRequestType) };

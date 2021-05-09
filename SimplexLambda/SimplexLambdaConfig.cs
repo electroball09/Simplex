@@ -25,44 +25,21 @@ namespace SimplexLambda
         [Range(1, int.MaxValue), ConfigValueInt]
         public int CredentialDurationHours { get; private set; } = 8;
 
-        [ConfigClass]
-        public SimplexServiceConfig ServiceConfig { get; private set; }
+        [ConfigClass, ConfigClassValidator]
+        public SimplexServiceConfig ServiceConfig { get; private set; } = new SimplexServiceConfig();
 
         public RSACryptoServiceProvider RSA { get; private set; }
 
-        public void Load(Func<string, string> varFunc = null)
+        public void Load(Func<string, string> varFunc)
         {
-            if (varFunc == null)
-                varFunc = Environment.GetEnvironmentVariable;
-
             this.LoadConfig(varFunc);
-
-            //PrivateKeyXML = varFunc("PrivateKeyXML");
-            //RSA = new RSACryptoServiceProvider();
-            //RSA.FromXmlString(PrivateKeyXML);
-
-            //SimplexTable = varFunc("SimplexTable");
-
-            //DetailedErrors = varFunc("DetailedErrors") == "true";
-            //IncludeDiagnosticInfo = varFunc("IncludeDiagnosticInfo") == "true";
-
-            //int.TryParse(varFunc("CredentialTimeoutMinutes"), out int timeout);
-            //CredentialTimeoutMinutes = timeout;
-            //int.TryParse(varFunc("CredentialDurationHours"), out int duration);
-            //CredentialDurationHours = duration;
-
-            //ServiceConfig = new SimplexServiceConfig()
-            //{
-            //    CryptKeyXML = varFunc("PublicKeyXML"),
-            //    OAuthURLs = JsonSerializer.Deserialize<Dictionary<Simplex.Protocol.AuthType, SimplexServiceConfig.OAuthURLParams>>(varFunc("OAuthURLs"))
-            //};
         }
 
         List<ValidationResult> results;
 
         private SimplexError ProcessResults(List<ValidationResult> list)
         {
-            if (list == null || list.Count == 0)
+            if (list.Count == 0)
                 return SimplexError.OK;
 
             StringBuilder b = new StringBuilder();
@@ -80,7 +57,7 @@ namespace SimplexLambda
                 ValidationContext ct = new ValidationContext(this);
                 var res = new List<ValidationResult>();
 
-                bool success = Validator.TryValidateObject(this, ct, res);
+                bool success = Validator.TryValidateObject(this, ct, res, true);
 
                 if (success)
                     results = new List<ValidationResult>();
@@ -89,14 +66,6 @@ namespace SimplexLambda
             }
 
             return ProcessResults(results);
-
-            //if (string.IsNullOrEmpty(PrivateKeyXML)) return false;
-            //if (string.IsNullOrEmpty(ServiceConfig.CryptKeyXML)) return false;
-            //if (string.IsNullOrEmpty(SimplexTable)) return false;
-            //if (CredentialTimeoutMinutes <= 0
-            //    || CredentialDurationHours <= 0) return false;
-
-            //return true;
         }
     }
 }

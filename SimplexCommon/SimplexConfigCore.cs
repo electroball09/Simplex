@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
+using System.Text;
 
 namespace Simplex
 {
@@ -11,19 +12,24 @@ namespace Simplex
     {
         public static void LoadConfig<T>(this T obj, Func<string, string> loadFunc)
         {
+            //Console.WriteLine($"loading config for obj type {obj.GetType()}");
             var props = obj.GetType().GetProperties();
             foreach (var prop in props)
             {
-                var cfgClassAttr = prop.GetCustomAttribute<ConfigClassAttribute>();
-                var cfgValAttr = prop.GetCustomAttribute<ConfigValueAttribute>();
+                //Console.WriteLine($"checking prop {prop.Name} type {prop.PropertyType}");
+                var cfgClassAttr = (ConfigClassAttribute)prop.GetCustomAttribute(typeof(ConfigClassAttribute));
+                var cfgValAttr = (ConfigValueAttribute)prop.GetCustomAttribute(typeof(ConfigValueAttribute));
                 object newValue = null;
                 if (cfgClassAttr != null)
                 {
-                    newValue = Activator.CreateInstance(prop.DeclaringType);
+                    //Console.WriteLine($"prop type {prop.PropertyType} of type {prop.DeclaringType} has config class attribute\n");
+                    newValue = Activator.CreateInstance(prop.PropertyType);
+                    //Console.WriteLine($"{newValue.GetType()}");
                     newValue.LoadConfig(loadFunc);
                 }
                 else if (cfgValAttr != null)
                 {
+                    //Console.WriteLine($"prop type {prop.PropertyType} of type {prop.DeclaringType} has config value attribute");
                     newValue = cfgValAttr.LoadValue(prop.Name, loadFunc);
                 }
                 else
@@ -31,6 +37,7 @@ namespace Simplex
                     return;
                 }
 
+                //Console.WriteLine($"setting prop to value {newValue}");
                 prop.SetValue(obj, newValue);
             }
         }
@@ -62,7 +69,7 @@ namespace Simplex
 
     public class ConfigValueBoolAttribute : ConfigValueAttribute
     {
-        public override object LoadValue(string name, Func<string, string> fetchingFunc) => fetchingFunc(name).ToLower() == "true";
+        public override object LoadValue(string name, Func<string, string> fetchingFunc) => fetchingFunc(name)?.ToLower() == "true";
     }
 
     public class ConfigValueJson : ConfigValueAttribute
@@ -76,24 +83,31 @@ namespace Simplex
 
         public override object LoadValue(string name, Func<string, string> fetchingFunc)
         {
+            string str = fetchingFunc(name);
+            if (string.IsNullOrEmpty(str))
+                return null;
             return JsonSerializer.Deserialize(fetchingFunc(name), baseType);
         }
     }
 
-    public abstract class SimplexConfigClassValidatorAttribute : ValidationAttribute
+    public class ConfigClassValidatorAttribute : ValidationAttribute
     {
         public override bool RequiresValidationContext => true;
         protected override ValidationResult IsValid(object value, ValidationContext validationContext)
         {
             ValidationContext ct = new ValidationContext(value);
             List<ValidationResult> results = new List<ValidationResult>();
-            bool success = Validator.TryValidateObject(value, ct, results);
+            bool success = Validator.TryValidateObject(value, ct, results, true);
             if (success)
                 return ValidationResult.Success;
             var mNames = new List<string>();
+            StringBuilder sb = new StringBuilder();
             foreach (var r in results)
+            {
                 mNames.AddRange(r.MemberNames);
-            return new ValidationResult("Class properties did not validate!", mNames);
+                sb.AppendLine(r.ErrorMessage);
+            }
+            return new ValidationResult(sb.ToString(), mNames);
         }
     }
 }

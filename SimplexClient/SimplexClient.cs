@@ -8,6 +8,7 @@ using RestSharp.Serializers.SystemTextJson;
 using System.Threading.Tasks;
 using Simplex.User;
 using Simplex.Routine;
+using Simplex.Transport;
 
 namespace Simplex
 {
@@ -30,50 +31,19 @@ namespace Simplex
         public UserCredentials LoggedInUser { get; private set; }
         public AuthRequest LoggedInCredentials { get; private set; }
 
-        private RestClient client;
+        internal ISimplexTransport transport { get; }
 
         public SimplexClient(SimplexClientConfig cfg)
         {
             Config = cfg.Copy();
 
-            client = new RestClient(Config.AssembleURL());
-            client.UseSerializer<SystemTextJsonSerializer>();
+            transport = cfg.Transport;
+            transport.Initialize();
         }
 
-        public SimplexClient() : this(SimplexClientConfig.Default) { }
-
-        public async Task<SimplexResponse<TRsp>> SendRequest<TRsp>(SimplexRequest request) where TRsp : class
+        public Task<SimplexResponse<TRsp>> SendRequest<TRsp>(SimplexRequest rq) where TRsp : class
         {
-            return await Task.Run
-                (async () =>
-                {
-                    Config.Logger.Debug($"Sending request of type {request.RequestType}");
-
-                    var json = await RequestGetJson(request);
-                    Config.Logger.Debug($"-request ID {request.RequestID} took {(DateTime.Now - request.RequestedTime).TotalMilliseconds} ms");
-                    var rsp = JsonSerializer.Deserialize<SimplexResponse<TRsp>>(json);
-                    rsp.DiagInfo?.DebugLog(Config.Logger);
-                    if (!rsp.Error && !rsp.DeserializePayload())
-                    {
-                        Config.Logger.Error($"Response type mismatch! Wanted type: {typeof(TRsp).Name}  received type: {rsp.PayloadType}");
-                        rsp.Payload = null;
-                        rsp.Error = SimplexError.GetError(SimplexErrorCode.InvalidResponsePayloadType);
-                    }
-                    return rsp;
-                }, new System.Threading.CancellationToken());
-        }
-
-        internal async Task<string> RequestGetJson(SimplexRequest request)
-        {
-            var rest = new RestRequest("", Method.POST, DataFormat.Json);
-            string jsonStr = JsonSerializer.Serialize(request);
-            Config.Logger.Debug($"request - {jsonStr}");
-            rest.AddJsonBody(request);
-            var resp = await client.ExecuteAsync<SimplexResponse>(rest);
-            if (resp == null)
-                throw new InvalidOperationException("Server returned a null response!");
-            Config.Logger.Debug($"response - {resp.Content}");
-            return resp.Content;
+            return transport.SendRequest<TRsp>(rq);
         }
 
         public Task SendPing()
