@@ -51,7 +51,7 @@ namespace SimplexLambda.RequestHandlers
             UserCredentials cred = new UserCredentials()
             {
                 UserGUID = acc.ConnectedUserGUID,
-                AuthToken = accessToken.Token
+                //AuthToken = accessToken._token
             };
 
             return EndRequest(SimplexError.OK, cred);

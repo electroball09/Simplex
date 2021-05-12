@@ -13,6 +13,7 @@ using SimplexLambda.RequestHandlers;
 using Amazon;
 using Simplex.Protocol;
 using System.Text;
+using System.Security.Cryptography;
 
 [assembly: LambdaSerializer(typeof(DefaultLambdaJsonSerializer))]
 namespace SimplexLambda
@@ -24,9 +25,13 @@ namespace SimplexLambda
         public ISimplexLogger Log { get; set; }
         public SimplexLambdaConfig LambdaConfig { get; set; }
         public RequestDiagnostics DiagInfo { get; set; }
+        public RSACryptoServiceProvider RSA => LambdaConfig?.RSA;
+        public Aes AES => LambdaConfig?.AES;
+        public SHA256 SHA { get; } = SHA256.Create();
 
-        public SimplexResponse EndRequest(SimplexError err, object payload, RequestDiagnostics.DiagHandle diagHandle)
+        public SimplexResponse EndRequest(SimplexError err, object payload, RequestDiagnostics.DiagHandle diagHandle, Action action = null)
         {
+            action?.Invoke();
             DiagInfo.EndDiag(diagHandle);
             if (!err)
                 return new SimplexResponse(Request, err);
@@ -122,8 +127,7 @@ namespace SimplexLambda
             {
                 var diagHandle = diagInfo.BeginDiag("CONFIG_LOAD");
 
-                LambdaConfig = new SimplexLambdaConfig();
-                LambdaConfig.Load(ConfigLoadFunc);
+                LambdaConfig = SimplexLambdaConfig.Load(ConfigLoadFunc);
 
                 e = LambdaConfig.ValidateConfig();
 

@@ -91,6 +91,7 @@ namespace Simplex
                             ServiceConfig = cfg.Item;
                             CLIENT_STATE = SimplexClientState.Connected;
                             Config.Logger.Info("SimplexClient - connected!");
+                            Config.Logger.Debug($"RSA key - {ServiceConfig.PublicKeyXML}");
                         }
                     }
                     catch (Exception ex)
@@ -122,8 +123,16 @@ namespace Simplex
             return Task.Run
                 (async () =>
                 {
+                    Config.Logger.Debug("lmao");
+
                     if (!SimplexUtil.EncryptData(ServiceConfig.RSA, secret, out string encSecret, out var encryptErr))
-                        encryptErr.Throw();
+                    {
+                        Config.Logger.Error($"{encryptErr.Code} - {encryptErr.Message}");
+                        CLIENT_STATE = SimplexClientState.Connected;
+                        return null;
+                    }
+
+                    Config.Logger.Debug("data encrypted");
 
                     AuthRequest rq = new AuthRequest()
                     {

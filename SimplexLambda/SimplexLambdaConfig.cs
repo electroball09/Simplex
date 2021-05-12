@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 
@@ -12,27 +13,47 @@ namespace SimplexLambda
 
     public class SimplexLambdaConfig
     {
-        [MinLength(1), ConfigValueString]
-        public string SimplexTable { get; private set; } = "";
-        [MinLength(1), ConfigValueString]
-        public string PrivateKeyXML { get; private set; } = "";
-        [ConfigValueBool]
-        public bool DetailedErrors { get; private set; } = false;
-        [ConfigValueBool]
-        public bool IncludeDiagnosticInfo { get; private set; } = false;
-        [Range(1, int.MaxValue), ConfigValueInt]
-        public int CredentialTimeoutMinutes { get; private set; } = 10;
-        [Range(1, int.MaxValue), ConfigValueInt]
-        public int CredentialDurationHours { get; private set; } = 8;
+        [MinLength(1)]
+        public string SimplexTable { get; set; } = "";
+        public bool DetailedErrors { get; set; } = false;
+        public bool IncludeDiagnosticInfo { get; set; } = false;
+        [Range(1, int.MaxValue)]
+        public int TokenExpirationHours { get; set; } = 5;
+        [MinLength(0)]
+        public AuthServiceParams[] AuthParams { get; set; } = new AuthServiceParams[0];
 
-        [ConfigClass, ConfigClassValidator]
-        public SimplexServiceConfig ServiceConfig { get; private set; } = new SimplexServiceConfig();
+        [ConfigClassValidator, JsonIgnore]
+        public SimplexServiceConfig ServiceConfig { get; set; }
 
+        [JsonIgnore]
         public RSACryptoServiceProvider RSA { get; private set; }
+        [JsonIgnore]
+        public Aes AES { get; private set; }
 
-        public void Load(Func<string, string> varFunc)
+        public static SimplexLambdaConfig Load(Func<string, string> varFunc)
         {
-            this.LoadConfig(varFunc);
+            string json = varFunc("config");
+
+            Console.WriteLine(json);
+
+            SimplexLambdaConfig cfg = JsonSerializer.Deserialize<SimplexLambdaConfig>(json);
+
+            Console.WriteLine($"table: {cfg.SimplexTable}");
+
+            cfg.AES = new AesManaged();
+            cfg.AES.KeySize = 128;
+            cfg.AES.GenerateIV();
+            cfg.AES.GenerateKey();
+
+            cfg.RSA = new RSACryptoServiceProvider(1024);
+
+            cfg.ServiceConfig = new SimplexServiceConfig()
+            {
+                AuthParams = cfg.AuthParams,
+                PublicKeyXML = cfg.RSA.ToXmlString(false)
+            };
+
+            return cfg;
         }
 
         List<ValidationResult> results;
@@ -42,12 +63,6 @@ namespace SimplexLambda
         {
             if (list.Count == 0)
             {
-                if (RSA == null)
-                {
-                    RSA = new RSACryptoServiceProvider();
-                    RSA.FromXmlString(PrivateKeyXML);
-                }
-
                 return SimplexError.OK;
             }
             if (errorStr == null)

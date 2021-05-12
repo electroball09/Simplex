@@ -8,8 +8,8 @@ namespace SimplexLambda.User
 {
     public class UserAccessToken : DBUserDataItem<UserAccessToken>
     {
-        public string Token { get; set; }
-
+        [DynamoDBProperty]
+        private string _token { get; set; }
         [DynamoDBProperty]
         private string _created { get; set; }
         [DynamoDBProperty]

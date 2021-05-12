@@ -22,10 +22,9 @@ namespace Simplex
 
     public class SimplexServiceConfig
     {
-
-        [MinLength(1), ConfigValueString]
+        [MinLength(1)]
         public string PublicKeyXML { get; set; } = "";
-        [MinLength(0), ConfigValueJson(typeof(AuthServiceParams[]))]
+        [MinLength(0)]
         public AuthServiceParams[] AuthParams { get; set; } = new AuthServiceParams[0];
 
         private RSACryptoServiceProvider _rsa;

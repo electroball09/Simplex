@@ -15,7 +15,7 @@ namespace SimplexLambda.Auth
         {
             var diag = context.DiagInfo.BeginDiag("BASIC_USER_AUTH");
 
-            string hash = LambdaUtil.HashInput(rq.AuthSecret, acc.Salt);
+            string hash = LambdaUtil.HashInput(context.SHA, rq.AuthSecret, acc.Salt);
 
             if (hash != acc.Secret)
                 err = SimplexError.GetError(SimplexErrorCode.InvalidAuthCredentials, "Passwords do not match");

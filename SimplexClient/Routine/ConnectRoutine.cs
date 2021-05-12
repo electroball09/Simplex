@@ -23,7 +23,9 @@ namespace Simplex.Routine
         public static async Task<SimplexResponse<UserCredentials>> AuthAccount(SimplexClient client, AuthRequest authRq)
         {
             SimplexRequest rq = new SimplexRequest(SimplexRequestType.Auth, authRq);
+            Console.WriteLine("sending auth request");
             var rsp = await client.SendRequest<UserCredentials>(rq);
+            Console.WriteLine("received auth response");
             if (!rsp.Error)
             {
                 if (rsp.Error == SimplexError.GetError(SimplexErrorCode.AuthAccountNonexistent))
