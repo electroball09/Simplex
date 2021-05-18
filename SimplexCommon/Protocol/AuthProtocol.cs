@@ -18,7 +18,7 @@ namespace Simplex.Protocol
         public string AuthSecret { get; set; } = "";
     }
 
-    public class UserCredentials
+    public class AccessCredentials
     {
         public Guid UserGUID { get; set; }
         public string AuthToken { get; set; }

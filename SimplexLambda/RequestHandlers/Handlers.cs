@@ -8,6 +8,13 @@ namespace SimplexLambda.RequestHandlers
 {
     public static class Handlers
     {
+        static readonly Dictionary<SimplexRequestType, Func<RequestHandler>> _handlersMap = new Dictionary<SimplexRequestType, Func<RequestHandler>>()
+        {
+            { SimplexRequestType.GetServiceConfig, () => new ServiceConfigRequestHandler() },
+            { SimplexRequestType.Auth, () => new AuthRequestHandler() },
+            { SimplexRequestType.UserData, () => new  UserDataRequestHandler() },
+        };
+
         public static SimplexResponse HandleRequest(SimplexRequestContext context)
         {
             var diagHandle = context.DiagInfo.BeginDiag("REQUEST_HANDLER");
@@ -15,15 +22,8 @@ namespace SimplexLambda.RequestHandlers
             context.Log.Debug($"handling request type of {context.Request.RequestType}");
 
             RequestHandler handler = null;
-            switch (context.Request.RequestType)
-            {
-                case (SimplexRequestType.GetServiceConfig):
-                    handler = new ServiceConfigRequestHandler();
-                    break;
-                case (SimplexRequestType.Auth):
-                    handler = new AuthRequestHandler();
-                    break;
-            }
+            if (_handlersMap.ContainsKey(context.Request.RequestType))
+                handler = _handlersMap[context.Request.RequestType]();
 
             context.Log.Debug($"handler - {handler?.GetType()}");
 

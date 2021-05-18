@@ -10,6 +10,9 @@ namespace Simplex
         OK = 0xFFFF,
         Unknown = 0x0000,
 
+        //lol
+        WTF,
+
         //common errors
         InvalidCryptographyConfiguration,
 
@@ -18,10 +21,15 @@ namespace Simplex
 
         // server -> client error
         LambdaMisconfiguration,
-        ResponseMalformed,
         InvalidRequestType,
         AccessTokenInvalid,
         InvalidAuthCredentials,
+        InvalidPayloadType,
+
+        //access errors
+        PermissionDenied,
+        AccessTokenExpired,
+
 
         //server errors
         DBItemNonexistent,
@@ -34,15 +42,18 @@ namespace Simplex
         {
             { SimplexErrorCode.Unknown, "An unknown error occured" },
             { SimplexErrorCode.OK, "OK" },
+            { SimplexErrorCode.WTF, "wtf u trying to do?" },
             { SimplexErrorCode.InvalidRequestType, "Invalid request type" },
             { SimplexErrorCode.DBItemNonexistent, "" },
             { SimplexErrorCode.LambdaMisconfiguration, "An invalid configuration of the lambda was detected" },
             { SimplexErrorCode.InvalidResponsePayloadType, "Response payload was of the wrong type" },
             { SimplexErrorCode.AuthAccountNonexistent, "No auth account with the specified type, id, and secret could be found" },
             { SimplexErrorCode.AccessTokenInvalid, "Access token is either expired or nonexistent" },
-            { SimplexErrorCode.ResponseMalformed, "Server error: response malformed" },
             { SimplexErrorCode.InvalidCryptographyConfiguration, "The requested cryptography function returned an error" },
             { SimplexErrorCode.InvalidAuthCredentials, "The provided auth credentials are invalid" },
+            { SimplexErrorCode.InvalidPayloadType, "The provided payload was of an incorrect type" },
+            { SimplexErrorCode.PermissionDenied, "Access to this resource was denied" },
+            { SimplexErrorCode.AccessTokenExpired, "Access token has expired.  Please reauthenticate" },
         };
 
         private static readonly SimplexError _ok = GetError(SimplexErrorCode.OK);
@@ -99,7 +110,7 @@ namespace Simplex
 
         public static implicit operator bool(SimplexError e)
         {
-            return e.Code == SimplexErrorCode.OK;
+            return e?.Code == SimplexErrorCode.OK;
         }
 
         public override string ToString()

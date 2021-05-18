@@ -59,6 +59,9 @@ namespace Simplex
     {
         public override void Log(object msg, SimplexLogType logType)
         {
+            if (!IsLogFlagSet(logType))
+                return;
+
             ConsoleColor f = ConsoleColor.White;
             ConsoleColor b = ConsoleColor.Black;
             switch (logType)

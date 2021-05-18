@@ -1,5 +1,5 @@
 {
-  "profile": "",
+  "profile": "lambda-access",
   "region": "us-west-1",
   "configuration": "Release",
   "framework": "netcoreapp3.1",

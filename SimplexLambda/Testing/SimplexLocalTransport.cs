@@ -33,7 +33,7 @@ namespace SimplexLambda.Testing
             SimplexLambdaFunctions.ConfigLoadFunc = envVarFunc;
         }
 
-        public Task<SimplexResponse<T>> SendRequest<T>(SimplexRequest rq) where T : class
+        public Task<T> SendRequest<T>(SimplexRequest rq) where T : SimplexResponse
         {
             return Task.Run
                 (() =>
@@ -45,8 +45,7 @@ namespace SimplexLambda.Testing
                     string rspJson = JsonSerializer.Serialize(rsp);
                     Logger.Debug(rspJson);
                     Logger.Debug($"{rsp.Payload} - {rsp.PayloadType}");
-                    SimplexResponse<T> rspDeserialized = JsonSerializer.Deserialize<SimplexResponse<T>>(rspJson);
-                    rspDeserialized.DeserializePayload();
+                    T rspDeserialized = JsonSerializer.Deserialize<T>(rspJson);
                     return rspDeserialized;
                 });
         }

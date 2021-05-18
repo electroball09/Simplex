@@ -1,6 +1,7 @@
 ﻿#pragma warning disable CS0618
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -12,13 +13,13 @@ namespace Simplex.Protocol
         None = 0,
 
         PingPong,
+        BatchRequest,
 
         GetServiceConfig,
 
         Auth,
 
-        RequestUserData,
-        UpdateUserData,
+        UserData,
     }
 
     public class SimplexRequest
@@ -27,8 +28,9 @@ namespace Simplex.Protocol
         public static int RequestIDCounter { get; private set; }
 
         public int RequestID { get; set; }
-        public SimplexRequestType RequestType { get; set; }
+        public virtual SimplexRequestType RequestType { get; set; }
         public object Payload { get; set; } = null;
+        public string AccessToken { get; set; } = null;
 
         [JsonIgnore]
         public DateTime RequestedTime { get; }
@@ -43,21 +45,34 @@ namespace Simplex.Protocol
             RequestType = rqType;
             Payload = payload;
         }
+
+        public T PayloadAs<T>() where T : class
+        {
+            try
+            {
+                if (!(Payload is T))
+                    Payload = JsonSerializer.Deserialize<T>(((JsonElement)Payload).GetRawText());
+
+                return Payload as T;
+            }
+            catch (Exception ex)
+            {
+                return null;
+            }
+        }
     }
 
-    public class SimplexRequest<T> : SimplexRequest where T : class
+    public class SimplexBatchRequest : SimplexRequest
     {
-        [JsonIgnore]
-        public T Item { get { return Payload as T; } set { Payload = value; } }
+        public override SimplexRequestType RequestType { get => SimplexRequestType.BatchRequest; set { } }
 
-        SimplexRequest() : base() { }
-        public SimplexRequest(SimplexRequestType rqType, T item) : base(rqType, item) { }
+        public List<SimplexRequest> Requests { get; set; } = new List<SimplexRequest>();
     }
 
     public class SimplexResponse
     {
-        public int RequestID { get; }
-        public SimplexRequestType RequestType { get; }
+        public int RequestID { get; set; }
+        public SimplexRequestType RequestType { get; set; }
         public SimplexError Error { get; set; }
 
         public string PayloadType { get; set; } = "";
@@ -76,9 +91,12 @@ namespace Simplex.Protocol
         }
 
         public RequestDiagnostics DiagInfo { get; set; }
+        public List<object> Logs { get; set; } = new List<object>();
 
         [JsonIgnore]
         public TimeSpan TimeTaken { get; }
+        [JsonIgnore]
+        public ISimplexLogger Logger { get; set; }
 
         [Obsolete("don't use this")]
         protected SimplexResponse() { }
@@ -94,27 +112,41 @@ namespace Simplex.Protocol
         {
             Error = err;
         }
+
+        public T PayloadAs<T>() where T : class
+        {
+            try
+            {
+                if (!(Payload is T))
+                    Payload = JsonSerializer.Deserialize<T>(((JsonElement)Payload).GetRawText());
+
+                return Payload as T;
+            }
+            catch (Exception ex)
+            {
+                Logger?.Error(ex.Message);
+                return null;
+            }
+        }
     }
 
     public class SimplexResponse<T> : SimplexResponse where T : class
     {
         [JsonIgnore]
-        public T Item { get { return Payload as T; } set { Payload = value; } }
-
-        SimplexResponse() : base() { }
-
-        public SimplexResponse(SimplexRequest rq, T item) : base(rq)
-        {
-            Item = item;
+        public T Data 
+        { 
+            get
+            {
+                T val = PayloadAs<T>();
+                if (val == null)
+                    throw new InvalidOperationException("Payload was null or not of the expected type");
+                return val;
+            }
         }
+    }
 
-        public bool DeserializePayload()
-        {
-            if (Payload == null) return true;
-
-            Payload = JsonSerializer.Deserialize<T>(((JsonElement)Payload).GetRawText());
-
-            return Item != null;
-        }
+    public class SimplexBatchResponse : SimplexResponse<List<SimplexResponse>>
+    {
+        public List<SimplexResponse> Responses => Data;
     }
 }

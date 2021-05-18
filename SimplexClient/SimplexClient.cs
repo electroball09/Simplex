@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Simplex.User;
 using Simplex.Routine;
 using Simplex.Transport;
+using Simplex.Util;
 
 namespace Simplex
 {
@@ -28,7 +29,7 @@ namespace Simplex
         public SimplexClientConfig Config { get; }
         public SimplexServiceConfig ServiceConfig { get; private set; }
         
-        public UserCredentials LoggedInUser { get; private set; }
+        public AccessCredentials LoggedInUser { get; private set; }
         public AuthRequest LoggedInCredentials { get; private set; }
 
         internal ISimplexTransport transport { get; }
@@ -44,7 +45,12 @@ namespace Simplex
 
         public Task<SimplexResponse<TRsp>> SendRequest<TRsp>(SimplexRequest rq) where TRsp : class
         {
-            return transport.SendRequest<TRsp>(rq);
+            return transport.SendRequest<SimplexResponse<TRsp>>(rq);
+        }
+
+        public Task<SimplexBatchResponse> SendRequest(SimplexBatchRequest rq)
+        {
+            return transport.SendRequest<SimplexBatchResponse>(rq);
         }
 
         public Task SendPing()
@@ -60,16 +66,10 @@ namespace Simplex
         public Task Connect()
         {
             if (CLIENT_STATE == SimplexClientState.Connecting)
-            {
-                Config.Logger.Warn("Trying to connect while client is waiting for server connection response.");
-                return null;
-            }
+                throw new InvalidOperationException("Trying to connect while client is waiting for server connection response.");
 
             if (CLIENT_STATE != SimplexClientState.Unconnected)
-            {
-                Config.Logger.Error("Client has already connected!");
-                return null;
-            }
+                throw new InvalidOperationException("Client has already connected!");
 
             Config.Logger.Info("SimplexClient - connecting...");
 
@@ -81,18 +81,10 @@ namespace Simplex
                     try
                     {
                         var cfg = await Routines.ConnectRoutine(this);
-                        if (cfg.Item == null)
-                        {
-                            CLIENT_STATE = SimplexClientState.Unconnected;
-                            Config.Logger.Error("Server returned no config.  Cannot connect.");
-                        }
-                        else
-                        {
-                            ServiceConfig = cfg.Item;
-                            CLIENT_STATE = SimplexClientState.Connected;
-                            Config.Logger.Info("SimplexClient - connected!");
-                            Config.Logger.Debug($"RSA key - {ServiceConfig.PublicKeyXML}");
-                        }
+                        ServiceConfig = cfg.Data;
+                        CLIENT_STATE = SimplexClientState.Connected;
+                        Config.Logger.Info("SimplexClient - connected!");
+                        Config.Logger.Debug($"RSA key - {ServiceConfig.PublicKeyHex}");
                     }
                     catch (Exception ex)
                     {
@@ -103,19 +95,13 @@ namespace Simplex
             return task;
         }
 
-        private Task<SimplexResponse<UserCredentials>> LoginBase(AuthType authType, string id, string secret)
+        private Task<SimplexResponse<AccessCredentials>> LoginBase(AuthType authType, string id, string secret)
         {
             if (CLIENT_STATE < SimplexClientState.Connected)
-            {
-                Config.Logger.Error("Must call Connect() first.");
-                return null;
-            }
+                throw new InvalidOperationException("Must call Connect() first.");
 
             if (CLIENT_STATE > SimplexClientState.Connected)
-            {
-                Config.Logger.Error("Client is logging in or has logged in");
-                return null;
-            }
+                throw new InvalidOperationException("Client is already logging in or has logged in");
 
             CLIENT_STATE = SimplexClientState.LoggingIn;
             Config.Logger.Info($"SimplexClient - logging into {authType} account");
@@ -123,9 +109,7 @@ namespace Simplex
             return Task.Run
                 (async () =>
                 {
-                    Config.Logger.Debug("lmao");
-
-                    if (!SimplexUtil.EncryptData(ServiceConfig.RSA, secret, out string encSecret, out var encryptErr))
+                    if (!SimplexUtil.EncryptString(ServiceConfig.RSA, secret, out string encSecret, out var encryptErr))
                     {
                         Config.Logger.Error($"{encryptErr.Code} - {encryptErr.Message}");
                         CLIENT_STATE = SimplexClientState.Connected;
@@ -147,7 +131,7 @@ namespace Simplex
 
                         if (rsp.Error)
                         {
-                            LoggedInUser = rsp.Item;
+                            LoggedInUser = rsp.Data;
                             LoggedInCredentials = rq;
                             CLIENT_STATE = SimplexClientState.LoggedIn;
                             Config.Logger.Info("SimplexClient - Logged in successfully!");
@@ -169,7 +153,7 @@ namespace Simplex
                 });
         }
 
-        public Task<SimplexResponse<UserCredentials>> LoginBasicAccount(string accountId, string accountPassword)
+        public Task<SimplexResponse<AccessCredentials>> LoginBasicAccount(string accountId, string accountPassword)
         {
             return LoginBase(AuthType.Basic, accountId, accountPassword);
         }

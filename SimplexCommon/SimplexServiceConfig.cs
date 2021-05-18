@@ -6,6 +6,9 @@ using System.Text.Json.Serialization;
 using System.Text.Json;
 using Simplex.Protocol;
 using System.ComponentModel.DataAnnotations;
+using Simplex.Util;
+using System.IO;
+using Simplex.Serialization;
 
 namespace Simplex
 {
@@ -23,7 +26,7 @@ namespace Simplex
     public class SimplexServiceConfig
     {
         [MinLength(1)]
-        public string PublicKeyXML { get; set; } = "";
+        public string PublicKeyHex { get; set; } = "";
         [MinLength(0)]
         public AuthServiceParams[] AuthParams { get; set; } = new AuthServiceParams[0];
 
@@ -33,13 +36,19 @@ namespace Simplex
         {
             get
             {
-                if (string.IsNullOrEmpty(PublicKeyXML))
+                if (string.IsNullOrEmpty(PublicKeyHex))
                     throw new InvalidOperationException("Trying to access RSA crypto before encryption key is loaded!");
 
                 if (_rsa == null)
                 {
                     _rsa = new RSACryptoServiceProvider();
-                    _rsa.FromXmlString(PublicKeyXML);
+                    RSASerializer rsaSer = new RSASerializer(_rsa, false);
+
+                    var b = PublicKeyHex.ToHexBytes().ToArray();
+                    using (MemoryStream ms = new MemoryStream(b))
+                    {
+                        rsaSer.SmpRead(ms);
+                    }
                 }
 
                 return _rsa;

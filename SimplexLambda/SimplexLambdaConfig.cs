@@ -7,12 +7,20 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
+using Simplex.Util;
+using System.IO;
+using Simplex.Serialization;
 
 namespace SimplexLambda
 {
-
     public class SimplexLambdaConfig
     {
+        public struct RollingConfig
+        {
+            public string RSAKeyHex { get; set; }
+            public string AESKeyHex { get; set; }
+        }
+
         [MinLength(1)]
         public string SimplexTable { get; set; } = "";
         public bool DetailedErrors { get; set; } = false;
@@ -21,39 +29,90 @@ namespace SimplexLambda
         public int TokenExpirationHours { get; set; } = 5;
         [MinLength(0)]
         public AuthServiceParams[] AuthParams { get; set; } = new AuthServiceParams[0];
+        [Range(1, 72)]
+        public int RollingConfigExpirationHours { get; set; } = 24;
 
         [ConfigClassValidator, JsonIgnore]
         public SimplexServiceConfig ServiceConfig { get; set; }
 
         [JsonIgnore]
-        public RSACryptoServiceProvider RSA { get; private set; }
+        public RSACryptoServiceProvider PrivateRSA { get; private set; }
         [JsonIgnore]
         public Aes AES { get; private set; }
 
-        public static SimplexLambdaConfig Load(Func<string, string> varFunc)
-        {
-            string json = varFunc("config");
+        private static DateTime lastRollingConfigUpdate;
+        private static RollingConfig rollingConfig;
 
-            Console.WriteLine(json);
+        public static SimplexLambdaConfig Load(Func<string, string> varFunc, RequestDiagnostics diag)
+        {
+            var handle = diag.BeginDiag("LOAD_CONFIG");
+
+            string json = varFunc("config");
 
             SimplexLambdaConfig cfg = JsonSerializer.Deserialize<SimplexLambdaConfig>(json);
 
-            Console.WriteLine($"table: {cfg.SimplexTable}");
-
-            cfg.AES = new AesManaged();
-            cfg.AES.KeySize = 128;
-            cfg.AES.GenerateIV();
-            cfg.AES.GenerateKey();
-
-            cfg.RSA = new RSACryptoServiceProvider(1024);
-
             cfg.ServiceConfig = new SimplexServiceConfig()
             {
-                AuthParams = cfg.AuthParams,
-                PublicKeyXML = cfg.RSA.ToXmlString(false)
+                AuthParams = cfg.AuthParams
             };
 
+            cfg.UpdateRollingConfig(diag);
+
+            diag.EndDiag(handle);
+
             return cfg;
+        }
+
+        public void UpdateRollingConfig(RequestDiagnostics diag)
+        {
+            var handle = diag.BeginDiag("UPDATE_ROLLING_CONFIG");
+
+            string date = Environment.GetEnvironmentVariable("configUpdated");
+            DateTime lastUpdateDate = new DateTime();
+            if (!string.IsNullOrEmpty(date))
+                lastUpdateDate = DateTime.Parse(date);
+
+            if (lastUpdateDate >= lastRollingConfigUpdate)
+            {
+                rollingConfig = JsonSerializer.Deserialize<RollingConfig>(Environment.GetEnvironmentVariable("rollingConfig"));
+                UpdateEncryptionFromRollingConfig(diag);
+            }
+
+            diag.EndDiag(handle);
+        }
+
+        private void UpdateEncryptionFromRollingConfig(RequestDiagnostics diag)
+        {
+            var handle = diag.BeginDiag("UPDATE_ENCRYPTION");
+
+            RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
+            Aes aes = new AesManaged();
+
+            RSASerializer rsaSer = new RSASerializer(rsa, true);
+            AESSerializer aesSer = new AESSerializer(aes);
+
+            Span<byte> rsaBytes = rollingConfig.RSAKeyHex.ToHexBytes();
+            Span<byte> aesBytes = rollingConfig.AESKeyHex.ToHexBytes();
+            rsaBytes.CopyTo(SimplexUtil.buffer.AsSpan(0, rsaBytes.Length));
+            aesBytes.CopyTo(SimplexUtil.buffer.AsSpan(rsaBytes.Length, aesBytes.Length));
+
+            using (MemoryStream ms = new MemoryStream(SimplexUtil.buffer))
+            {
+                rsaSer.SmpRead(ms);
+                aesSer.SmpRead(ms);
+
+                ms.Position = 0;
+                rsaSer.SerializePrivateValues = false;
+                rsaSer.SmpWrite(ms);
+                ServiceConfig.PublicKeyHex = SimplexUtil.buffer.AsSpan(0, (int)rsaSer.SmpSize()).ToHexString();
+            }
+
+            PrivateRSA = rsa;
+            AES = aes;
+
+            lastRollingConfigUpdate = DateTime.UtcNow;
+
+            diag.EndDiag(handle);
         }
 
         List<ValidationResult> results;

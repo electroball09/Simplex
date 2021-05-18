@@ -14,8 +14,6 @@ namespace SimplexLambda
 {
     public class DBWrapper //: IUserDataLoader
     {
-        static int __count = 0;
-
         private AmazonDynamoDBClient Client;
         private DynamoDBContext Context;
         private DynamoDBOperationConfig Cfg;
@@ -34,7 +32,7 @@ namespace SimplexLambda
 
         public SimplexError LoadItem<T>(T obj, out T Item, SimplexRequestContext context, out SimplexError err)
         {
-            string diagName = $"DB_LOAD_{__count++} [{obj.GetType().Name}]";
+            string diagName = $"DB_LOAD_[{obj.GetType().Name}]";
             var diagHandle = context.DiagInfo.BeginDiag(diagName);
             var task = Context.LoadAsync(obj, Cfg);
             task.Wait();

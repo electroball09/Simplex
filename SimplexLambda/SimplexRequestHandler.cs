@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Amazon.Lambda;
 using Amazon.Lambda.Core;
 using Amazon.Lambda.Serialization.SystemTextJson;
 using Simplex;
@@ -25,7 +26,7 @@ namespace SimplexLambda
         public ISimplexLogger Log { get; set; }
         public SimplexLambdaConfig LambdaConfig { get; set; }
         public RequestDiagnostics DiagInfo { get; set; }
-        public RSACryptoServiceProvider RSA => LambdaConfig?.RSA;
+        public RSACryptoServiceProvider RSA => LambdaConfig?.PrivateRSA;
         public Aes AES => LambdaConfig?.AES;
         public SHA256 SHA { get; } = SHA256.Create();
 
@@ -48,7 +49,7 @@ namespace SimplexLambda
     public class SimplexLambdaFunctions
     {
         public static Func<string, string> ConfigLoadFunc { get; set; } = Environment.GetEnvironmentVariable;
-        public static ISimplexLogger Logger { get; set; } = new ConsoleLogger();
+        public static LambdaLogger Logger { get; set; } = new LambdaLogger();
         static SimplexLambdaConfig LambdaConfig;
         static List<string> errorNamesErrors;
 
@@ -60,8 +61,15 @@ namespace SimplexLambda
             return SimplexHandler(rq);
         }
 
+        //public SimplexResponse SimplexAdminRequestHandler(SimplexRequest rq, ILambdaContext ct)
+        //{
+
+        //}
+
         public SimplexResponse SimplexHandler(SimplexRequest rq)
         {
+            Logger.logs.Clear();
+
             Logger.Debug("handling request");
 
             RequestDiagnostics diagInfo = new RequestDiagnostics();
@@ -74,6 +82,8 @@ namespace SimplexLambda
                 diagInfo.EndDiag(diagHandle);
                 if (overrideIncludeDiag || LambdaConfig.IncludeDiagnosticInfo)
                     rsp.DiagInfo = diagInfo;
+                if (true)
+                    rsp.Logs = Logger.logs;
                 return rsp;
             }
 
@@ -123,18 +133,22 @@ namespace SimplexLambda
 
         public SimplexError LoadOrVerifyConfig(RequestDiagnostics diagInfo, out SimplexError e)
         {
+            var diagHandle = diagInfo.BeginDiag("LOAD_OR_VERIFY_CONFIG");
+
             if (LambdaConfig == null)
             {
-                var diagHandle = diagInfo.BeginDiag("CONFIG_LOAD");
 
-                LambdaConfig = SimplexLambdaConfig.Load(ConfigLoadFunc);
+                LambdaConfig = SimplexLambdaConfig.Load(ConfigLoadFunc, diagInfo);
 
                 e = LambdaConfig.ValidateConfig();
-
-                diagInfo.EndDiag(diagHandle);
             }
             else
+            {
+                LambdaConfig.UpdateRollingConfig(diagInfo);
                 e = LambdaConfig.ValidateConfig();
+            }
+
+            diagInfo.EndDiag(diagHandle);
 
             return e;
         }

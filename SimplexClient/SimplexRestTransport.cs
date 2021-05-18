@@ -68,7 +68,7 @@ namespace Simplex
             client.UseSerializer<SystemTextJsonSerializer>();
         }
 
-        public async Task<SimplexResponse<T>> SendRequest<T>(SimplexRequest request) where T : class
+        public async Task<T> SendRequest<T>(SimplexRequest request) where T : SimplexResponse
         {
             return await Task.Run
                 (async () =>
@@ -76,15 +76,17 @@ namespace Simplex
                     Logger.Debug($"Sending request of type {request.RequestType}");
 
                     var json = await RequestGetJson(request);
+                    var el = JsonSerializer.Deserialize<JsonElement>(json);
+                    bool isError = el.TryGetProperty("errorType", out var err);
                     Logger.Debug($"-request ID {request.RequestID} took {(DateTime.Now - request.RequestedTime).TotalMilliseconds} ms");
-                    var rsp = JsonSerializer.Deserialize<SimplexResponse<T>>(json);
-                    rsp.DiagInfo?.DebugLog(Logger);
-                    if (rsp.Error && !rsp.DeserializePayload())
+                    var rsp = JsonSerializer.Deserialize<T>(json);
+                    if (isError)
                     {
-                        Logger.Error($"Response type mismatch! Wanted type: {typeof(T).Name}  received type: {rsp.PayloadType}");
-                        rsp.Payload = null;
-                        rsp.Error = SimplexError.GetError(SimplexErrorCode.InvalidResponsePayloadType);
+                        rsp.Error = SimplexError.GetError(SimplexErrorCode.Unknown, json);
                     }
+                    rsp.DiagInfo?.DebugLog(Logger);
+                    foreach (var o in rsp.Logs)
+                        Logger.Debug($"  log> {o}");
                     return rsp;
                 }, new System.Threading.CancellationToken());
         }

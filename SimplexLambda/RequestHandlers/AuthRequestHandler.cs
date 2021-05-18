@@ -6,6 +6,8 @@ using SimplexLambda.Auth;
 using System.Text.Json;
 using Simplex.Protocol;
 using SimplexLambda.DBSchema;
+using SimplexLambda.User;
+using Simplex.Util;
 
 namespace SimplexLambda.RequestHandlers
 {
@@ -26,7 +28,7 @@ namespace SimplexLambda.RequestHandlers
 
             AuthRequest authRq = context.DeserializePayload<AuthRequest>();
 
-            if (!SimplexUtil.DecryptString(context.LambdaConfig.RSA, authRq.AuthSecret, out string decryptedSecret, out var decryptError))
+            if (!SimplexUtil.DecryptString(context.LambdaConfig.PrivateRSA, authRq.AuthSecret, out string decryptedSecret, out var decryptError))
             {
                 return EndRequest(SimplexError.GetError(SimplexErrorCode.InvalidAuthCredentials));
             }
@@ -45,13 +47,21 @@ namespace SimplexLambda.RequestHandlers
             if (!AuthProvider.GetProvider(authRq.AuthType).AuthUser(authRq, acc, context, out var authErr))
                 return EndRequest(authErr);
 
-            if (!LambdaUtil.GenerateAccessToken(acc.ConnectedUserGUID, context, out var accessToken, out var tokenErr))
-                return EndRequest(tokenErr);
-
-            UserCredentials cred = new UserCredentials()
+            SimplexAccessToken sat = new SimplexAccessToken()
             {
                 UserGUID = acc.ConnectedUserGUID,
-                //AuthToken = accessToken._token
+                Created = DateTime.UtcNow,
+                //AccessFlags = SimplexAccessFlags.GetUserData | SimplexAccessFlags.SetUserData | SimplexAccessFlags.UpdateUserData | SimplexAccessFlags.Admin
+            };
+
+            var b = sat.SerializeSignAndEncrypt(context.RSA, context.AES, context.DiagInfo);
+            string tok = new Span<byte>(b).ToHexString();
+
+            AccessCredentials cred = new AccessCredentials()
+            {
+                UserGUID = acc.ConnectedUserGUID,
+                AuthToken = tok,
+                
             };
 
             return EndRequest(SimplexError.OK, cred);

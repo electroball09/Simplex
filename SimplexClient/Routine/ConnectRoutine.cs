@@ -15,16 +15,14 @@ namespace Simplex.Routine
             var cfg = await client.SendRequest<SimplexServiceConfig>(rq);
             if (!cfg.Error)
                 cfg.Error.Throw();
-            if (cfg.Item == null)
-                throw new Exception("Item was null!");
             return cfg;
         }
 
-        public static async Task<SimplexResponse<UserCredentials>> AuthAccount(SimplexClient client, AuthRequest authRq)
+        public static async Task<SimplexResponse<AccessCredentials>> AuthAccount(SimplexClient client, AuthRequest authRq)
         {
             SimplexRequest rq = new SimplexRequest(SimplexRequestType.Auth, authRq);
             Console.WriteLine("sending auth request");
-            var rsp = await client.SendRequest<UserCredentials>(rq);
+            var rsp = await client.SendRequest<AccessCredentials>(rq);
             Console.WriteLine("received auth response");
             if (!rsp.Error)
             {
