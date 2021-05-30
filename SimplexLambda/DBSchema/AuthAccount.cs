@@ -4,18 +4,19 @@ using System.Text;
 using Amazon.DynamoDBv2.DataModel;
 using System.Text.RegularExpressions;
 using Simplex.Protocol;
+using Simplex;
 
 namespace SimplexLambda.DBSchema
 {
     public class AuthAccount
     {
-        public static AuthAccount Create(AuthType authType, string id)
+        public static AuthAccount Create(AuthServiceParamsLambda authParams, string id)
         {
 #pragma warning disable CS0618
             return new AuthAccount()
             {
                 AccountID = id,
-                AccountPrefix = authType.ToString().ToUpper()
+                AccountPrefix = $"{authParams.Type}_{authParams.AuthName}".ToUpper()
             };
 #pragma warning restore CS0618
         }

@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Simplex
 {
-    public class RequestDiagnostics
+    public class SimplexDiagnostics
     {
         public struct DiagHandle
         {
@@ -30,7 +30,7 @@ namespace Simplex
 
         public List<DiagHandle> EndedHandles { get; set; } = new List<DiagHandle>();
 
-        public RequestDiagnostics() { }
+        public SimplexDiagnostics() { }
 
         public DiagHandle BeginDiag(string id)
         {

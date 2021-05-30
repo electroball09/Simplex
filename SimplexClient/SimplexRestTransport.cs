@@ -78,7 +78,7 @@ namespace Simplex
                     var json = await RequestGetJson(request);
                     var el = JsonSerializer.Deserialize<JsonElement>(json);
                     bool isError = el.TryGetProperty("errorType", out var err);
-                    Logger.Debug($"-request ID {request.RequestID} took {(DateTime.Now - request.RequestedTime).TotalMilliseconds} ms");
+                    Logger.Debug($"-request ID {request.RequestID} took {(DateTime.Now - request.CreatedTime).TotalMilliseconds} ms");
                     var rsp = JsonSerializer.Deserialize<T>(json);
                     if (isError)
                     {

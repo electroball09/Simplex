@@ -4,6 +4,7 @@ using System.Text;
 
 namespace Simplex
 {
+    [Flags]
     public enum SimplexLogType
     {
         Debug = 0x0001,
@@ -52,6 +53,11 @@ namespace Simplex
         public bool IsLogFlagSet(SimplexLogType type)
         {
             return (flags & type) > 0;
+        }
+
+        public SimplexLogType GetFlags()
+        {
+            return flags;
         }
     }
 

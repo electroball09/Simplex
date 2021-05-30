@@ -25,13 +25,13 @@ namespace Simplex.Util
             return new string(chars);
         }
 
-        public static Span<byte> ToHexBytes(this string str)
+        public static byte[] ToHexBytes(this string str)
         {
             if (str.Length % 2 != 0)
                 throw new FormatException($"Input string length must be divisible evenly by two ({str.Length})");
 
             ReadOnlySpan<char> chars = str.AsSpan();
-            Span<byte> bytes = new byte[chars.Length / 2];
+            byte[] bytes = new byte[chars.Length / 2];
 
             for (int i = 0; i < bytes.Length; i++)
             {

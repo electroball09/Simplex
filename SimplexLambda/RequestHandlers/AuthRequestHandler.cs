@@ -17,54 +17,45 @@ namespace SimplexLambda.RequestHandlers
         {
             var diagHandle = context.DiagInfo.BeginDiag("AUTH_REQUEST_HANDLER");
 
-            SimplexResponse EndRequest(SimplexError err, object payload = null)
+            if (!context.Request.PayloadAs<AuthRequest>(out var authRq, out var err))
             {
-                context.DiagInfo.EndDiag(diagHandle);
-                if (!err)
-                    return new SimplexResponse(context.Request, err);
-                else
-                    return new SimplexResponse(context.Request, err) { Payload = payload };
+                return context.EndRequest(
+                    SimplexError.GetError(SimplexErrorCode.InvalidAuthCredentials, "Invalid payload type"),
+                    null, diagHandle);
             }
 
-            AuthRequest authRq = context.DeserializePayload<AuthRequest>();
+            var authParams = context.LambdaConfig.GetAuthParams(authRq.AuthType);
 
-            if (!SimplexUtil.DecryptString(context.LambdaConfig.PrivateRSA, authRq.AuthSecret, out string decryptedSecret, out var decryptError))
+            AuthProvider provider = AuthProvider.GetProvider(authRq.AuthType);
+
+            if (!provider.AuthUser(authParams, context, out var acc, out var authError))
             {
-                return EndRequest(SimplexError.GetError(SimplexErrorCode.InvalidAuthCredentials));
+                return context.EndRequest(authError, "something is fucked!", diagHandle);
             }
-            authRq.AuthSecret = decryptedSecret;
-
-            AuthAccount acc = AuthAccount.Create(authRq.AuthType, authRq.AuthID);
-
-            if (!context.DB.LoadItem(acc, out acc, context, out var loadErr))
-            {
-                if (loadErr.Code == SimplexErrorCode.DBItemNonexistent)
-                    loadErr = SimplexError.GetError(SimplexErrorCode.AuthAccountNonexistent);
-
-                return EndRequest(loadErr);
-            }
-
-            if (!AuthProvider.GetProvider(authRq.AuthType).AuthUser(authRq, acc, context, out var authErr))
-                return EndRequest(authErr);
 
             SimplexAccessToken sat = new SimplexAccessToken()
             {
                 UserGUID = acc.ConnectedUserGUID,
                 Created = DateTime.UtcNow,
-                //AccessFlags = SimplexAccessFlags.GetUserData | SimplexAccessFlags.SetUserData | SimplexAccessFlags.UpdateUserData | SimplexAccessFlags.Admin
+                AccessFlags = SimplexAccessFlags.GetUserData | SimplexAccessFlags.SetUserData | SimplexAccessFlags.UpdateUserData// | SimplexAccessFlags.Admin
             };
 
             var b = sat.SerializeSignAndEncrypt(context.RSA, context.AES, context.DiagInfo);
-            string tok = new Span<byte>(b).ToHexString();
+            string tok = b.AsSpan().ToHexString();
 
             AccessCredentials cred = new AccessCredentials()
             {
                 UserGUID = acc.ConnectedUserGUID,
                 AuthToken = tok,
-                
             };
 
-            return EndRequest(SimplexError.OK, cred);
+            AuthResponse response = new AuthResponse()
+            {
+                AuthType = authRq.AuthType,
+                Credentials = cred,
+            };
+
+            return context.EndRequest(SimplexError.OK, "this is a response!", diagHandle);
         }
     }
 }

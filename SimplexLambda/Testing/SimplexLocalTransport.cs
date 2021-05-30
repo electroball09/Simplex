@@ -30,6 +30,7 @@ namespace SimplexLambda.Testing
         public void Initialize()
         {
             funcs = new SimplexLambdaFunctions();
+            SimplexLambdaFunctions.Logger = new LambdaLogger(Logger);
             SimplexLambdaFunctions.ConfigLoadFunc = envVarFunc;
         }
 
@@ -44,8 +45,9 @@ namespace SimplexLambda.Testing
                     SimplexResponse rsp = funcs.SimplexHandler(rqDeserialized);
                     string rspJson = JsonSerializer.Serialize(rsp);
                     Logger.Debug(rspJson);
-                    Logger.Debug($"{rsp.Payload} - {rsp.PayloadType}");
+                    rsp.DiagInfo.DebugLog(Logger);
                     T rspDeserialized = JsonSerializer.Deserialize<T>(rspJson);
+                    rspDeserialized.Logger = Logger;
                     return rspDeserialized;
                 });
         }

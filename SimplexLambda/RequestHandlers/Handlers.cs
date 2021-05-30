@@ -12,6 +12,7 @@ namespace SimplexLambda.RequestHandlers
         {
             { SimplexRequestType.GetServiceConfig, () => new ServiceConfigRequestHandler() },
             { SimplexRequestType.Auth, () => new AuthRequestHandler() },
+            { SimplexRequestType.OAuth, () => new OAuthRequestHandler() },
             { SimplexRequestType.UserData, () => new  UserDataRequestHandler() },
         };
 

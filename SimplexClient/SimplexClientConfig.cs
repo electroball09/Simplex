@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 using Flurl;
 using Simplex.Transport;
@@ -13,25 +14,22 @@ namespace Simplex
             SimplexClientConfig copy = new SimplexClientConfig()
             {
                 Logger = old.Logger,
-                Transport = old.Transport,
+                ClientID = old.ClientID,
+                GameName = old.GameName,
             };
 
             return copy;
         }
 
         public ISimplexLogger Logger { get; set; } = new ConsoleLogger();
-        public ISimplexTransport Transport { get; private set; }
+        [MinLength(1)]
+        public string ClientID { get; set; }
+        [MinLength(1)]
+        public string GameName { get; set; }
 
         public SimplexClientConfig Copy()
         {
             return Copy(this);
-        }
-
-        public T SetTransport<T>() where T : ISimplexTransport, new()
-        {
-            var t = new T();
-            Transport = t;
-            return t;
         }
     }
 }

@@ -10,6 +10,8 @@ using Simplex.User;
 using Simplex.Routine;
 using Simplex.Transport;
 using Simplex.Util;
+using System.Security.Cryptography;
+using System.ComponentModel.DataAnnotations;
 
 namespace Simplex
 {
@@ -22,34 +24,71 @@ namespace Simplex
         LoggedIn
     }
 
-    public class SimplexClient
+    public interface ISimplexClient
+    {
+        SimplexClientState CLIENT_STATE { get; }
+        SimplexClientConfig Config { get; }
+        SimplexServiceConfig ServiceConfig { get; }
+        AccessCredentials AccessCredentials { get; }
+        AuthRequest LoggedInUser { get; }
+        ISimplexTransport Transport { get; }
+        SimplexDataCache ClientCache { get; }
+
+        Task<SimplexResponse<TRsp>> SendRequest<TRsp>(SimplexRequest rq) where TRsp : class;
+        Task<SimplexBatchResponse> SendRequest(SimplexBatchRequest rq);
+        Task SendPing();
+        Task Connect();
+        Task<SimplexResponse<AuthResponse>> LoginBasicAccount(string accountId, string accountPw);
+        Task<SimplexResponse<AuthResponse>> LoginOAuth(AuthType authType);
+    }
+
+    public class SimplexClient<TTransport> : ISimplexClient where TTransport : ISimplexTransport
     {
         public SimplexClientState CLIENT_STATE { get; private set; }
 
         public SimplexClientConfig Config { get; }
         public SimplexServiceConfig ServiceConfig { get; private set; }
         
-        public AccessCredentials LoggedInUser { get; private set; }
-        public AuthRequest LoggedInCredentials { get; private set; }
+        public AccessCredentials AccessCredentials { get; private set; }
+        public AuthRequest LoggedInUser { get; private set; }
 
-        internal ISimplexTransport transport { get; }
+        public SimplexDataCache ClientCache { get; private set; }
+        public SimplexDataCache UserCache { get; private set; }
 
-        public SimplexClient(SimplexClientConfig cfg)
+        private TTransport transport;
+        ISimplexTransport ISimplexClient.Transport => transport;
+        private ISimplexLogger logger;
+
+        SHA256 _sha = SHA256.Create();
+
+        public SimplexClient(SimplexClientConfig cfg, TTransport transportInst)
         {
+            Validator.ValidateObject(cfg, new ValidationContext(cfg), true);
+
             Config = cfg.Copy();
 
-            transport = cfg.Transport;
+            Config.Logger = new PrefixedSimplexLogger(cfg.Logger, cfg.ClientID);
+            logger = Config.Logger;
+
+            transport = transportInst;
             transport.Logger = cfg.Logger;
             transport.Initialize();
+
+            ClientCache = new SimplexDataCache(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                Config.ClientID,
+                Config.GameName);
         }
 
         public Task<SimplexResponse<TRsp>> SendRequest<TRsp>(SimplexRequest rq) where TRsp : class
         {
+            rq.ClientID = Config.ClientID;
             return transport.SendRequest<SimplexResponse<TRsp>>(rq);
         }
 
         public Task<SimplexBatchResponse> SendRequest(SimplexBatchRequest rq)
         {
+            rq.ClientID = Config.ClientID;
             return transport.SendRequest<SimplexBatchResponse>(rq);
         }
 
@@ -58,20 +97,19 @@ namespace Simplex
             var task = Task.Run
                 (async () =>
                 {
+                    logger.Info("Sending ping...");
                     var rsp = await SendRequest<object>(new SimplexRequest(SimplexRequestType.PingPong, null));
+                    logger.Info("Received pong!");
                 });
             return task;
         }
 
         public Task Connect()
         {
-            if (CLIENT_STATE == SimplexClientState.Connecting)
-                throw new InvalidOperationException("Trying to connect while client is waiting for server connection response.");
+            if (CLIENT_STATE > SimplexClientState.Unconnected)
+                throw new InvalidOperationException($"Client is connecting or has already connected!\nCLIENT STATE: {CLIENT_STATE}");
 
-            if (CLIENT_STATE != SimplexClientState.Unconnected)
-                throw new InvalidOperationException("Client has already connected!");
-
-            Config.Logger.Info("SimplexClient - connecting...");
+            logger.Info("SimplexClient - connecting...");
 
             CLIENT_STATE = SimplexClientState.Connecting;
 
@@ -81,21 +119,25 @@ namespace Simplex
                     try
                     {
                         var cfg = await Routines.ConnectRoutine(this);
+
+                        if (!cfg.Error)
+                            cfg.Error.Throw();
+
                         ServiceConfig = cfg.Data;
                         CLIENT_STATE = SimplexClientState.Connected;
-                        Config.Logger.Info("SimplexClient - connected!");
-                        Config.Logger.Debug($"RSA key - {ServiceConfig.PublicKeyHex}");
+                        logger.Info("SimplexClient - connected!");
+                        logger.Debug($"RSA key - {ServiceConfig.PublicKeyHex}");
                     }
                     catch (Exception ex)
                     {
                         CLIENT_STATE = SimplexClientState.Unconnected;
-                        Config.Logger.Error(ex.ToString());
+                        logger.Error(ex.ToString());
                     }
                 });
             return task;
         }
 
-        private Task<SimplexResponse<AccessCredentials>> LoginBase(AuthType authType, string id, string secret)
+        private AuthServiceParams LoginFlowAndGetAuthParams(AuthType authType)
         {
             if (CLIENT_STATE < SimplexClientState.Connected)
                 throw new InvalidOperationException("Must call Connect() first.");
@@ -103,25 +145,37 @@ namespace Simplex
             if (CLIENT_STATE > SimplexClientState.Connected)
                 throw new InvalidOperationException("Client is already logging in or has logged in");
 
+            var authParams = ServiceConfig.GetAuthParams(authType);
+            if (authParams == null)
+                throw new InvalidOperationException($"Auth params for {authType} were not found in service config!");
+
+            if (!authParams.Enabled)
+                throw new InvalidOperationException($"Auth type {authType} is not enabled on the service!");
+
             CLIENT_STATE = SimplexClientState.LoggingIn;
-            Config.Logger.Info($"SimplexClient - logging into {authType} account");
+            return authParams;
+        }
+
+        private Task<SimplexResponse<AuthResponse>> LoginBase(AuthType authType, string id, string secret)
+        {
+            var authParams = LoginFlowAndGetAuthParams(authType);
+
+            logger.Info($"SimplexClient - logging into {authType} account");
 
             return Task.Run
                 (async () =>
                 {
                     if (!SimplexUtil.EncryptString(ServiceConfig.RSA, secret, out string encSecret, out var encryptErr))
                     {
-                        Config.Logger.Error($"{encryptErr.Code} - {encryptErr.Message}");
+                        logger.Error($"{encryptErr.Code} - {encryptErr.Message}");
                         CLIENT_STATE = SimplexClientState.Connected;
                         return null;
                     }
 
-                    Config.Logger.Debug("data encrypted");
-
                     AuthRequest rq = new AuthRequest()
                     {
-                        AuthID = id,
-                        AuthSecret = encSecret,
+                        AccountID = id,
+                        AccountSecret = encSecret,
                         AuthType = authType
                     };
 
@@ -131,15 +185,15 @@ namespace Simplex
 
                         if (rsp.Error)
                         {
-                            LoggedInUser = rsp.Data;
-                            LoggedInCredentials = rq;
+                            AccessCredentials = rsp.Data.Credentials;
+                            LoggedInUser = rq;
                             CLIENT_STATE = SimplexClientState.LoggedIn;
-                            Config.Logger.Info("SimplexClient - Logged in successfully!");
+                            logger.Info("SimplexClient - Logged in successfully!");
                         }
                         else
                         {
                             CLIENT_STATE = SimplexClientState.Connected;
-                            Config.Logger.Error("Could not log in!");
+                            logger.Error($"Could not log in! {rsp.Error}");
                         }
 
                         return rsp;
@@ -147,15 +201,33 @@ namespace Simplex
                     catch (Exception ex)
                     {
                         CLIENT_STATE = SimplexClientState.Connected;
-                        Config.Logger.Error(ex.ToString());
+                        logger.Error(ex.ToString());
                         return null;
                     }
                 });
         }
 
-        public Task<SimplexResponse<AccessCredentials>> LoginBasicAccount(string accountId, string accountPassword)
+        public Task<SimplexResponse<AuthResponse>> LoginBasicAccount(string accountId, string accountPassword)
         {
-            return LoginBase(AuthType.Basic, accountId, accountPassword);
+            var hashedPassword = _sha.ComputeHash(Encoding.UTF8.GetBytes(accountPassword)).AsSpan().ToHexString();
+            return LoginBase(AuthType.Basic, accountId, hashedPassword);
+        }
+
+        public Task<SimplexResponse<AuthResponse>> LoginOAuth(AuthType authType)
+        {
+            if (!authType.HasFlag(AuthType.IsOAuth))
+                throw new InvalidOperationException("Must be a valid OAuth type!");
+
+            var authParams = LoginFlowAndGetAuthParams(authType);
+            
+            return Task.Run
+                (async () =>
+                {
+                    var auth = await Routines.OAuthAuthenticate(this, authParams);
+                    var oauthToken = await Routines.OAuthRequestToken(this, auth, authParams);
+                    var rsp = await Routines.OAuthAuthAccount(this, oauthToken.Data.TokenData, authParams);
+                    return rsp;
+                });
         }
     }
 }

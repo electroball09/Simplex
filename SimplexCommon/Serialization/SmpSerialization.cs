@@ -50,6 +50,7 @@ namespace Simplex.Serialization
         protected abstract void BytesImpl(ref Span<byte> value);
         protected abstract void BytesImpl(ref byte[] value);
         protected abstract void ByteImpl(ref byte value);
+        protected abstract void StringImpl(ref string value);
 
         public void Int32(ref int value) => Int32Impl(ref value);
         public void Int64(ref long value) => Int64Impl(ref value);
@@ -57,6 +58,7 @@ namespace Simplex.Serialization
         public void Bytes(ref Span<byte> value) => BytesImpl(ref value);
         public void Bytes(ref byte[] value) => BytesImpl(ref value);
         public void Byte(ref byte value) => ByteImpl(ref value);
+        public void String(ref string value) => StringImpl(ref value);
         public void Serializer<T>(ref T value) where T : ISmpSerializer => value.Serialize(this);
     }
 
@@ -70,7 +72,7 @@ namespace Simplex.Serialization
         public SmpSerializationStructureWrite(Stream stream)
             : base(stream)
         {
-            _bw = new BinaryWriter(stream);
+            _bw = new BinaryWriter(stream, Encoding.UTF8);
         }
 
         protected override void BytesImpl(ref Span<byte> value) => _stream.Write(value);
@@ -79,6 +81,7 @@ namespace Simplex.Serialization
         protected override void Int64Impl(ref long value) => _bw.Write(value);
         protected override void UInt64Impl(ref ulong value) => _bw.Write(value);
         protected override void ByteImpl(ref byte value) => _bw.Write(value);
+        protected override void StringImpl(ref string value) => _bw.Write(value);
     }
 
     public class SmpSerializationStructureRead : SmpSerializationStructure
@@ -91,7 +94,7 @@ namespace Simplex.Serialization
         public SmpSerializationStructureRead(Stream stream)
             : base(stream)
         {
-            _br = new BinaryReader(stream);
+            _br = new BinaryReader(stream, Encoding.UTF8);
         }
 
         protected override void BytesImpl(ref Span<byte> value) => _stream.Read(value);
@@ -100,6 +103,7 @@ namespace Simplex.Serialization
         protected override void Int64Impl(ref long value) => value = _br.ReadInt64();
         protected override void UInt64Impl(ref ulong value) => value = _br.ReadUInt64();
         protected override void ByteImpl(ref byte value) => value = _br.ReadByte();
+        protected override void StringImpl(ref string value) => value = _br.ReadString();
     }
 
     public class SmpSerializationStructureSize : SmpSerializationStructure
@@ -115,5 +119,6 @@ namespace Simplex.Serialization
         protected override void Int64Impl(ref long value) => size += sizeof(long);
         protected override void UInt64Impl(ref ulong value) => size += sizeof(ulong);
         protected override void ByteImpl(ref byte value) => size += sizeof(byte);
+        protected override void StringImpl(ref string value) => size += Encoding.UTF8.GetByteCount(value);
     }
 }

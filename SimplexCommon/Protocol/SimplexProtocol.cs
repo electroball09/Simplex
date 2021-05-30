@@ -18,6 +18,7 @@ namespace Simplex.Protocol
         GetServiceConfig,
 
         Auth,
+        OAuth,
 
         UserData,
     }
@@ -29,11 +30,17 @@ namespace Simplex.Protocol
 
         public int RequestID { get; set; }
         public virtual SimplexRequestType RequestType { get; set; }
-        public object Payload { get; set; } = null;
+        private object _payload = null;
+        public object Payload 
+        {
+            get => _payload;
+            set => _payload = value;
+        }
         public string AccessToken { get; set; } = null;
+        public string ClientID { get; set; } = "";
 
         [JsonIgnore]
-        public DateTime RequestedTime { get; }
+        public DateTime CreatedTime { get; }
 
         [Obsolete("don't use this")]
         protected SimplexRequest() { }
@@ -41,32 +48,26 @@ namespace Simplex.Protocol
         public SimplexRequest(SimplexRequestType rqType, object payload)
         {
             RequestID = RequestIDCounter++;
-            RequestedTime = DateTime.Now;
+            CreatedTime = DateTime.Now;
             RequestType = rqType;
             Payload = payload;
         }
 
-        public T PayloadAs<T>() where T : class
+        public SimplexError PayloadAs<T>(out T obj, out SimplexError err) where T : class
         {
             try
             {
-                if (!(Payload is T))
-                    Payload = JsonSerializer.Deserialize<T>(((JsonElement)Payload).GetRawText());
+                obj = JsonSerializer.Deserialize<T>(((JsonElement)Payload).GetRawText());
 
-                return Payload as T;
+                err = SimplexError.OK;
             }
             catch (Exception ex)
             {
-                return null;
+                obj = null;
+                err = SimplexError.GetError(SimplexErrorCode.Unknown, ex.ToString());
             }
+            return err;
         }
-    }
-
-    public class SimplexBatchRequest : SimplexRequest
-    {
-        public override SimplexRequestType RequestType { get => SimplexRequestType.BatchRequest; set { } }
-
-        public List<SimplexRequest> Requests { get; set; } = new List<SimplexRequest>();
     }
 
     public class SimplexResponse
@@ -90,7 +91,7 @@ namespace Simplex.Protocol
             }
         }
 
-        public RequestDiagnostics DiagInfo { get; set; }
+        public SimplexDiagnostics DiagInfo { get; set; }
         public List<object> Logs { get; set; } = new List<object>();
 
         [JsonIgnore]
@@ -103,7 +104,7 @@ namespace Simplex.Protocol
 
         public SimplexResponse(SimplexRequest rq)
         {
-            TimeTaken = DateTime.Now - rq.RequestedTime;
+            TimeTaken = DateTime.Now - rq.CreatedTime;
             RequestID = rq.RequestID;
             RequestType = rq.RequestType;
         }
@@ -117,15 +118,22 @@ namespace Simplex.Protocol
         {
             try
             {
-                if (!(Payload is T))
-                    Payload = JsonSerializer.Deserialize<T>(((JsonElement)Payload).GetRawText());
+                if (Payload == null)
+                    return null;
+
+                if (Payload is JsonElement element)
+                {
+                    Console.WriteLine("deserializing json");
+                    Payload = JsonSerializer.Deserialize<T>(element.GetRawText());
+                }
 
                 return Payload as T;
             }
             catch (Exception ex)
             {
+                Console.WriteLine($">>>>>>>>>>>>>>>>>>>> {ex}");
                 Logger?.Error(ex.Message);
-                return null;
+                return default(T);
             }
         }
     }
@@ -139,14 +147,9 @@ namespace Simplex.Protocol
             {
                 T val = PayloadAs<T>();
                 if (val == null)
-                    throw new InvalidOperationException("Payload was null or not of the expected type");
+                    throw new InvalidOperationException($"Payload [{Payload} - {Payload?.GetType()}] was null or not of the expected type");
                 return val;
             }
         }
-    }
-
-    public class SimplexBatchResponse : SimplexResponse<List<SimplexResponse>>
-    {
-        public List<SimplexResponse> Responses => Data;
     }
 }

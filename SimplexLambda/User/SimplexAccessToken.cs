@@ -43,6 +43,9 @@ namespace SimplexLambda.User
         private long _created;
         [JsonIgnore]
         public DateTime Created { get => DateTime.FromBinary(_created); set => _created = value.ToBinary(); }
+        private string _clientId;
+        [JsonIgnore]
+        public string ClientID { get => _clientId; set => _clientId = value; }
 
         public SimplexAccessToken()
         {
@@ -54,10 +57,7 @@ namespace SimplexLambda.User
             logger?.Debug($"access token serializing - Type: {repo.GetType()}   IsRead: {repo.IsRead}   Size: {repo.Size}");
             logger?.Debug($"    before serialization: {this}");
 
-            long e = _entropy;
-            repo.Int64(ref e);
-            logger?.Debug($"e: {e}");
-            _entropy = e;
+            repo.Int64(ref _entropy);
 
             Span<byte> sp = stackalloc byte[16];
             _userGUID.TryWriteBytes(sp);
@@ -67,6 +67,8 @@ namespace SimplexLambda.User
             repo.UInt64(ref _accessFlags);
 
             repo.Int64(ref _created);
+
+            repo.String(ref _clientId);
 
             logger?.Debug($"done serializing - {this}");
         }
@@ -86,7 +88,7 @@ namespace SimplexLambda.User
                 && this._created == sat._created;
         }
 
-        public byte[] SerializeSignAndEncrypt(RSA rsa, Aes aes, RequestDiagnostics diag)
+        public byte[] SerializeSignAndEncrypt(RSA rsa, Aes aes, SimplexDiagnostics diag)
         {
             var handle = diag.BeginDiag("ACCESS_TOKEN_SERIALIZATION");
 
@@ -107,7 +109,7 @@ namespace SimplexLambda.User
             }
         }
 
-        public SimplexError DecryptVerifyAndDeserialize(byte[] bytes, RSA rsa, Aes aes, RequestDiagnostics diag, out SimplexError err)
+        public SimplexError DecryptVerifyAndDeserialize(byte[] bytes, RSA rsa, Aes aes, SimplexDiagnostics diag, out SimplexError err)
         {
             var handle = diag.BeginDiag("ACCESS_TOKEN_DESERIALIZATION");
 
@@ -154,7 +156,7 @@ namespace SimplexLambda.User
 
         public static SimplexError FromString(string token, SimplexRequestContext context, out SimplexAccessToken accessToken, out SimplexError err)
         {
-            var bytes = token.ToHexBytes().ToArray();
+            var bytes = token.ToHexBytes();
             accessToken = new SimplexAccessToken();
             accessToken.DecryptVerifyAndDeserialize(bytes, context.RSA, context.AES, context.DiagInfo, out var decryptErr);
             err = decryptErr;

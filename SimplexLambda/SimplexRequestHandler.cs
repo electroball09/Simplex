@@ -15,6 +15,7 @@ using Amazon;
 using Simplex.Protocol;
 using System.Text;
 using System.Security.Cryptography;
+using Simplex.Util;
 
 [assembly: LambdaSerializer(typeof(DefaultLambdaJsonSerializer))]
 namespace SimplexLambda
@@ -25,12 +26,13 @@ namespace SimplexLambda
         public DBWrapper DB { get; set; }
         public ISimplexLogger Log { get; set; }
         public SimplexLambdaConfig LambdaConfig { get; set; }
-        public RequestDiagnostics DiagInfo { get; set; }
+        public SimplexDiagnostics DiagInfo { get; set; }
         public RSACryptoServiceProvider RSA => LambdaConfig?.PrivateRSA;
         public Aes AES => LambdaConfig?.AES;
         public SHA256 SHA { get; } = SHA256.Create();
+        public RestClientWrapper RestClient { get; } = new RestClientWrapper();
 
-        public SimplexResponse EndRequest(SimplexError err, object payload, RequestDiagnostics.DiagHandle diagHandle, Action action = null)
+        public SimplexResponse EndRequest(SimplexError err, object payload, SimplexDiagnostics.DiagHandle diagHandle, Action action = null)
         {
             action?.Invoke();
             DiagInfo.EndDiag(diagHandle);
@@ -39,17 +41,12 @@ namespace SimplexLambda
             else
                 return new SimplexResponse(Request, err) { Payload = payload };
         }
-
-        public T DeserializePayload<T>()
-        {
-            return JsonSerializer.Deserialize<T>(((JsonElement)Request.Payload).GetRawText());
-        }
     }
 
     public class SimplexLambdaFunctions
     {
         public static Func<string, string> ConfigLoadFunc { get; set; } = Environment.GetEnvironmentVariable;
-        public static LambdaLogger Logger { get; set; } = new LambdaLogger();
+        public static LambdaLogger Logger { get; set; } = new LambdaLogger(new ConsoleLogger());
         static SimplexLambdaConfig LambdaConfig;
         static List<string> errorNamesErrors;
 
@@ -72,7 +69,7 @@ namespace SimplexLambda
 
             Logger.Debug("handling request");
 
-            RequestDiagnostics diagInfo = new RequestDiagnostics();
+            SimplexDiagnostics diagInfo = new SimplexDiagnostics();
             var diagHandle = diagInfo.BeginDiag("REQUEST_OVERALL");
 
             SimplexResponse EndRequest(SimplexResponse rsp, bool overrideIncludeDiag = false)
@@ -107,7 +104,7 @@ namespace SimplexLambda
             return EndRequest(HandleRequest(rq, diagInfo));
         }
 
-        public SimplexResponse HandleRequest(SimplexRequest rq, RequestDiagnostics diagInfo)
+        public SimplexResponse HandleRequest(SimplexRequest rq, SimplexDiagnostics diagInfo)
         {
             DBWrapper db = new DBWrapper(LambdaConfig);
 
@@ -120,18 +117,19 @@ namespace SimplexLambda
                 DiagInfo = diagInfo,
             };
 
-            try
-            {
+            //try
+            //{
                 return Handlers.HandleRequest(context);
-            }
-            catch (Exception ex)
-            {
-                context.Log.Error(ex);
-                return new SimplexResponse(rq, SimplexError.GetError(SimplexErrorCode.Unknown, LambdaConfig.DetailedErrors ? ex.ToString() : ex.Message));
-            }
+            //}
+            //catch (Exception ex)
+            //{
+            //    throw ex;
+            //    context.Log.Error(ex);
+            //    return new SimplexResponse(rq, SimplexError.GetError(SimplexErrorCode.Unknown, LambdaConfig.DetailedErrors ? ex.ToString() : ex.Message));
+            //}
         }
 
-        public SimplexError LoadOrVerifyConfig(RequestDiagnostics diagInfo, out SimplexError e)
+        public SimplexError LoadOrVerifyConfig(SimplexDiagnostics diagInfo, out SimplexError e)
         {
             var diagHandle = diagInfo.BeginDiag("LOAD_OR_VERIFY_CONFIG");
 
@@ -144,7 +142,7 @@ namespace SimplexLambda
             }
             else
             {
-                LambdaConfig.UpdateRollingConfig(diagInfo);
+                LambdaConfig.UpdateRollingConfig(ConfigLoadFunc, diagInfo);
                 e = LambdaConfig.ValidateConfig();
             }
 
@@ -153,7 +151,7 @@ namespace SimplexLambda
             return e;
         }
 
-        public SimplexError VerifyErrorNames(RequestDiagnostics diagInfo, out SimplexError e)
+        public SimplexError VerifyErrorNames(SimplexDiagnostics diagInfo, out SimplexError e)
         {
             var diagHandle = diagInfo.BeginDiag("VERIFY_ERROR_NAMES");
 

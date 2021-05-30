@@ -18,8 +18,7 @@ namespace SimplexLambda.RequestHandlers
             if (!tokenErr)
                 return new SimplexResponse(context.Request, tokenErr);
 
-            var dataRq = context.Request.PayloadAs<UserDataRequest>();
-            if (dataRq == null)
+            if (context.Request.PayloadAs<UserDataRequest>(out var dataRq, out _))
                 return context.EndRequest(SimplexError.GetError(SimplexErrorCode.InvalidPayloadType), null, handle);
 
             SimplexAccessFlags requiredFlags = GetRequiredFlags(accessToken, dataRq);

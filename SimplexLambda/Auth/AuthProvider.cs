@@ -6,23 +6,42 @@ using Amazon.DynamoDBv2.DataModel;
 using Simplex.Protocol;
 using SimplexLambda.DBSchema;
 using System.Security.Cryptography;
+using SimplexLambda.User;
 
 namespace SimplexLambda.Auth
 {
     public abstract class AuthProvider
     {
-        protected static SHA256 SHA { get; } = SHA256.Create();
-
-        static Dictionary<AuthType, Type> providerMap = new Dictionary<AuthType, Type>()
+        static Dictionary<AuthType, Func<AuthProvider>> providerMap = new Dictionary<AuthType, Func<AuthProvider>>()
         {
-            { AuthType.Basic, typeof(BasicAuthProvider) },
+            { AuthType.Basic, () => new BasicAuthProvider() },
         };
 
         public static AuthProvider GetProvider(AuthType authType)
         {
-            return (AuthProvider)Activator.CreateInstance(providerMap[authType]);
+            if (authType.HasFlag(AuthType.IsOAuth))
+                return new OAuthProvider();
+            if (providerMap.TryGetValue(authType, out var func))
+                return func();
+            return null;
         }
 
-        public abstract SimplexError AuthUser(AuthRequest rq, AuthAccount acc, SimplexRequestContext context, out SimplexError err);
+        protected static SimplexError LoadAccount(AuthRequest rq, AuthServiceParamsLambda authParams, SimplexRequestContext context, out AuthAccount acc, out SimplexError err)
+        {
+            acc = AuthAccount.Create(authParams, rq.AccountID);
+
+            if (!context.DB.LoadItem(acc, out acc, context, out err))
+            {
+                if (err.Code == SimplexErrorCode.DBItemNonexistent)
+                    err = SimplexError.GetError(SimplexErrorCode.AuthAccountNonexistent);
+                acc = null;
+
+                return err;
+            }
+
+            return SimplexError.OK;
+        }
+        
+        public abstract SimplexError AuthUser(AuthServiceParamsLambda authParams, SimplexRequestContext context, out AuthAccount acc, out SimplexError err);
     }
 }

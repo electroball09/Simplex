@@ -9,18 +9,51 @@ using System.ComponentModel.DataAnnotations;
 using Simplex.Util;
 using System.IO;
 using Simplex.Serialization;
+using Flurl;
 
 namespace Simplex
 {
     public class AuthServiceParams
     {
         public AuthType Type { get; set; }
+        public string AuthName { get; set; }
         public bool Enabled { get; set; }
+
+        public string OAuthClientID { get; set; }
         public string OAuthAuthenticationURL { get; set; }
-        public string OAuthTokenURL { get; set; }
         public string OAuthScopeString { get; set; }
 
-        AuthServiceParams() { }
+        protected AuthServiceParams() { }
+
+        public string CreateAuthenticationRequestURL(string redirect_uri)
+        {
+            return OAuthAuthenticationURL
+                .SetQueryParam("client_id", OAuthClientID)
+                .SetQueryParam("redirect_uri", redirect_uri)
+                .SetQueryParam("response_type", "code")
+                .SetQueryParam("scope", OAuthScopeString);
+        }
+    }
+
+    public class AuthServiceParamsLambda : AuthServiceParams
+    {
+        public string OAuthClientSecret { get; set; }
+        public string OAuthTokenURL { get; set; }
+        public int OAuthTokenResponseDataID { get; set; }
+        public string OAuthAccountDataRequestURL { get; set; }
+        public Dictionary<string, string> OAuthAdditionalQueryParameters { get; set; } = new Dictionary<string, string>();
+        public string OAuthAccountDataAccountIDLocator { get; set; }
+        public string OAuthAccountDataEmailAddressLocator { get; set; }
+
+        public string CreateTokenRequestURL(string authCode, string redirect_uri)
+        {
+            return OAuthTokenURL
+                .SetQueryParam("client_id", OAuthClientID)
+                .SetQueryParam("client_secret", OAuthClientSecret)
+                .SetQueryParam("code", authCode)
+                .SetQueryParam("grant_type", "authorization_code")
+                .SetQueryParam("redirect_uri", redirect_uri);
+        }
     }
 
     public class SimplexServiceConfig
@@ -44,7 +77,7 @@ namespace Simplex
                     _rsa = new RSACryptoServiceProvider();
                     RSASerializer rsaSer = new RSASerializer(_rsa, false);
 
-                    var b = PublicKeyHex.ToHexBytes().ToArray();
+                    var b = PublicKeyHex.ToHexBytes();
                     using (MemoryStream ms = new MemoryStream(b))
                     {
                         rsaSer.SmpRead(ms);
