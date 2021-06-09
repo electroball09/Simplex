@@ -13,7 +13,7 @@ namespace SimplexLambda.Auth
 {
     public class BasicAuthProvider : AuthProvider
     {
-        public override SimplexError AuthUser(AuthServiceParamsLambda authParams, SimplexRequestContext context, out AuthAccount acc, out SimplexError err)
+        public override SimplexError AuthUser(AuthServiceParamsLambda authParams, SimplexRequestContext context, out AuthRequest authRq, out AuthAccount acc, out SimplexError err)
         {
             var diag = context.DiagInfo.BeginDiag("BASIC_USER_AUTH");
 
@@ -25,29 +25,29 @@ namespace SimplexLambda.Auth
                 return error;
             }
 
-            if (!context.Request.PayloadAs<AuthRequest>(out var rq, out err))
+            if (!context.Request.PayloadAs<AuthRequest>(out authRq, out err))
             {
                 return EndRequest(err);
             }
 
-            if (!LoadAccount(rq, authParams, context, out acc, out err))
+            if (!LoadAccount(authRq, authParams, context, out acc, out err))
             {
                 return EndRequest(err);
             }
 
-            if (!SimplexUtil.DecryptString(context.LambdaConfig.PrivateRSA, rq.AccountSecret, out string decryptedSecret, out var decryptError))
+            if (!SimplexUtil.DecryptString(context.LambdaConfig.PrivateRSA, authRq.AccountSecret, out string decryptedSecret, out var decryptError))
             {
-                err = SimplexError.GetError(SimplexErrorCode.InvalidAuthCredentials);
+                err = SimplexErrorCode.InvalidAuthCredentials;
                 return EndRequest(err);
             }
 
-            rq.AccountSecret = decryptedSecret;
-            string hash = LambdaUtil.HashInput(context.SHA, rq.AccountSecret, acc.Salt);
+            authRq.AccountSecret = decryptedSecret;
+            string hash = LambdaUtil.HashInput(context.SHA, authRq.AccountSecret, acc.Salt);
 
             if (hash != acc.Secret)
-                err = SimplexError.GetError(SimplexErrorCode.InvalidAuthCredentials, "tmp pw mismatch");
+                err = SimplexError.Custom(SimplexErrorCode.InvalidAuthCredentials, "tmp pw mismatch");
             else
-                err = SimplexError.OK;
+                err = SimplexErrorCode.OK;
 
             return EndRequest(err);
         }

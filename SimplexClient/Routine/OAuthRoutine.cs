@@ -10,52 +10,8 @@ using Simplex.OAuthFormats;
 
 namespace Simplex.Routine
 {
-    internal partial class Routines
+    public partial class Routines
     {
-        class CachedTokenData
-        {
-            public OAuthTokenResponseData token;
-            public AuthType authType;
-        }
-
-        class TokenCache
-        {
-            public List<CachedTokenData> tokens = new List<CachedTokenData>();
-        }
-
-        public static async Task<OAuthTokenResponseData> OAuthTryLocateCachedToken(ISimplexClient client, AuthServiceParams authParams)
-        {
-            var cache = await client.ClientCache.GetCache<TokenCache>();
-
-            foreach (var ctok in cache.Data.tokens)
-                if (ctok.authType == authParams.Type)
-                    return ctok.token;
-
-            return null;
-        }
-
-        public static async Task OAuthCacheToken(ISimplexClient client, OAuthTokenResponseData token, AuthServiceParams authParams)
-        {
-            CachedTokenData cachedToken = new CachedTokenData()
-            {
-                token = token,
-                authType = authParams.Type
-            };
-
-            var cache = await client.ClientCache.GetCache<TokenCache>();
-            await cache.Modify
-                ((data) =>
-                {
-                    int ind = -1;
-                    foreach (var tok in data.tokens)
-                        if (tok.authType == cachedToken.authType)
-                            ind = data.tokens.IndexOf(tok);
-                    if (ind == -1)
-                        data.tokens.Add(cachedToken);
-                    else
-                        data.tokens[ind] = cachedToken;
-                });
-        }
 
         public static async Task<OAuthAuthenticationData> OAuthAuthenticate(ISimplexClient client, AuthServiceParams authParams)
         {
@@ -103,7 +59,7 @@ namespace Simplex.Routine
             var authRq = new OAuthRequestTokenRequest()
             {
                 AuthenticationData = authData,
-                AuthType = authParams.Type,
+                ServiceIdentifier = authParams.Identifier
             };
 
             SimplexRequest rq = new SimplexRequest(SimplexRequestType.OAuth, authRq);
@@ -115,6 +71,8 @@ namespace Simplex.Routine
                 client.Config.Logger.Error(rsp.Error);
             }
 
+            await OAuthCacheToken(client, rsp.Data.TokenData, authParams.Identifier);
+
             return rsp;
         }
 
@@ -122,7 +80,7 @@ namespace Simplex.Routine
         {
             var oauthRq = new OAuthRefreshTokenRequest()
             {
-                AuthType = authParams.Type,
+                ServiceIdentifier = authParams.Identifier,
                 Token = token
             };
 
@@ -135,6 +93,8 @@ namespace Simplex.Routine
                 client.Config.Logger.Error(rsp.Error);
             }
 
+            await OAuthCacheToken(client, rsp.Data.TokenData, authParams.Identifier);
+
             return rsp;
         }
 
@@ -142,9 +102,12 @@ namespace Simplex.Routine
         {
             OAuthRequestAuthAccount oauthRq = new OAuthRequestAuthAccount()
             {
-                AuthType = authParams.Type,
+                ServiceIdentifier = authParams.Identifier,
                 TokenData = tokenData,
+                CreateAccountIfNonexistent = client.Config.CreateAccountIfNonexistent,
             };
+
+            client.Config.Logger.Debug($"************************************************ {oauthRq.CreateAccountIfNonexistent}");
 
             SimplexRequest rq = new SimplexRequest(SimplexRequestType.Auth, oauthRq);
 

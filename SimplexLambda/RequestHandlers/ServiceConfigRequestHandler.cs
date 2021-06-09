@@ -8,11 +8,13 @@ namespace SimplexLambda.RequestHandlers
 {
     public class ServiceConfigRequestHandler : RequestHandler
     {
+        public override bool RequiresAccessToken => false;
+
         public override SimplexResponse HandleRequest(SimplexRequestContext context)
         {
             return new SimplexResponse(context.Request)
             {
-                Error = SimplexError.OK,
+                Error = SimplexErrorCode.OK,
                 Payload = context.LambdaConfig.ServiceConfig
             };
         }

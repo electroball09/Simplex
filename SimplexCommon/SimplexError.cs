@@ -1,4 +1,5 @@
-﻿using System;
+﻿#pragma warning disable CS0618
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -25,6 +26,7 @@ namespace Simplex
         AccessTokenInvalid,
         InvalidAuthCredentials,
         InvalidPayloadType,
+        AuthServiceDisabled,
 
         //access errors
         PermissionDenied,
@@ -54,11 +56,8 @@ namespace Simplex
             { SimplexErrorCode.InvalidPayloadType, "The provided payload was of an incorrect type" },
             { SimplexErrorCode.PermissionDenied, "Access to this resource was denied" },
             { SimplexErrorCode.AccessTokenExpired, "Access token has expired.  Please reauthenticate" },
+            { SimplexErrorCode.AuthServiceDisabled, "The requested auth service is not enabled" },
         };
-
-        private static readonly SimplexError _ok = GetError(SimplexErrorCode.OK);
-        [JsonIgnore]
-        public static SimplexError OK => _ok;
 
         public static List<string> ValidateErrors()
         {
@@ -72,7 +71,7 @@ namespace Simplex
             return namesNotFound;
         }
 
-        public static SimplexError GetError(SimplexErrorCode err, string customMsg = null)
+        public static SimplexError Custom(SimplexErrorCode err, string customMsg)
         {
             return new SimplexError(err, customMsg);
         }
@@ -82,14 +81,21 @@ namespace Simplex
 
         SimplexError(SimplexErrorCode err, string customMsg)
         {
-#pragma warning disable CS0618
             Code = err;
             Message = customMsg != null ? customMsg : friendlyStrings[err];
-#pragma warning restore CS0618
         }
 
         public SimplexErrorCode Code { get; [Obsolete("don't use this")] set; }
         public string Message { get; [Obsolete("don't use this")] set; }
+
+        public void Substitute(SimplexErrorCode oldCode, SimplexErrorCode newCode)
+        {
+            if (Code == oldCode)
+            {
+                Code = newCode;
+                Message = friendlyStrings[Code];
+            }
+        }
 
         public override bool Equals(object obj)
         {
@@ -98,30 +104,19 @@ namespace Simplex
             return false;
         }
 
-        public static bool operator ==(SimplexError a, SimplexError b)
-        {
-            return a?.Code == b?.Code;
-        }
+        public static bool operator ==(SimplexError a, SimplexError b) => a?.Code == b?.Code;
 
-        public static bool operator !=(SimplexError a, SimplexError b)
-        {
-            return !(a == b);
-        }
+        public static bool operator !=(SimplexError a, SimplexError b) => !(a == b);
 
-        public static implicit operator bool(SimplexError e)
-        {
-            return e?.Code == SimplexErrorCode.OK;
-        }
+        public static implicit operator bool(SimplexError e) => e?.Code == SimplexErrorCode.OK;
 
-        public override string ToString()
-        {
-            return $"{Code} - {Message}";
-        }
+        public static implicit operator SimplexError(SimplexErrorCode code) => new SimplexError(code, null);
 
-        public override int GetHashCode()
-        {
-            return (int)Code;
-        }
+        public static implicit operator SimplexErrorCode(SimplexError err) => err.Code;
+
+        public override string ToString() => $"{Code} - {Message}";
+
+        public override int GetHashCode() => (int)Code;
 
         public void Throw()
         {

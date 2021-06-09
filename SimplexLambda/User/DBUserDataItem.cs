@@ -5,7 +5,7 @@ using Amazon.DynamoDBv2.DataModel;
 
 namespace SimplexLambda.User
 {
-    public abstract class DBUserDataItem
+    public class DBUserDataItem
     {
         [DynamoDBHashKey("Hash")]
         public Guid GUID { get; set; }
@@ -16,7 +16,7 @@ namespace SimplexLambda.User
             set { }
         }
 
-        protected abstract string GetRange();
+        protected virtual string GetRange() { return null; }
     }
 
     public class DBUserDataItem<T> : DBUserDataItem

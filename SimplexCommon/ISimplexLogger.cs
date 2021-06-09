@@ -73,15 +73,15 @@ namespace Simplex
             switch (logType)
             {
                 case SimplexLogType.Debug:
-                    f = ConsoleColor.White;
-                    b = ConsoleColor.DarkBlue;
+                    f = ConsoleColor.DarkCyan;
+                    b = ConsoleColor.Black;
                     break;
                 case SimplexLogType.Info:
                     f = ConsoleColor.White;
                     b = ConsoleColor.Black;
                     break;
                 case SimplexLogType.Warn:
-                    f = ConsoleColor.Yellow;
+                    f = ConsoleColor.DarkYellow;
                     b = ConsoleColor.Black;
                     break;
                 case SimplexLogType.Error:

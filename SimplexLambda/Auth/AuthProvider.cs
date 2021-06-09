@@ -12,36 +12,42 @@ namespace SimplexLambda.Auth
 {
     public abstract class AuthProvider
     {
-        static Dictionary<AuthType, Func<AuthProvider>> providerMap = new Dictionary<AuthType, Func<AuthProvider>>()
+        static Dictionary<AuthServiceIdentifier.AuthType, Func<AuthProvider>> providerMap = new Dictionary<AuthServiceIdentifier.AuthType, Func<AuthProvider>>()
         {
-            { AuthType.Basic, () => new BasicAuthProvider() },
+            { AuthServiceIdentifier.AuthType.Basic, () => new BasicAuthProvider() },
+            { AuthServiceIdentifier.AuthType.Google, () => new OAuthProvider() },
+            { AuthServiceIdentifier.AuthType.Twitch, () => new OAuthProvider() },
         };
 
-        public static AuthProvider GetProvider(AuthType authType)
+        public static SimplexError GetProvider(AuthServiceIdentifier identifier, out AuthProvider provider, out SimplexError err)
         {
-            if (authType.HasFlag(AuthType.IsOAuth))
-                return new OAuthProvider();
-            if (providerMap.TryGetValue(authType, out var func))
-                return func();
-            return null;
+            if (providerMap.TryGetValue(identifier.Type, out var func))
+            {
+                provider = func();
+                err = SimplexErrorCode.OK;
+            }
+            else
+            {
+                provider = null;
+                err = SimplexError.Custom(SimplexErrorCode.LambdaMisconfiguration, $"Auth service was not found for identifier {identifier}");
+            }
+            return err;
         }
 
         protected static SimplexError LoadAccount(AuthRequest rq, AuthServiceParamsLambda authParams, SimplexRequestContext context, out AuthAccount acc, out SimplexError err)
         {
-            acc = AuthAccount.Create(authParams, rq.AccountID);
+            var tmpAcc = AuthAccount.Create(authParams.Identifier, rq.AccountID);
+            tmpAcc.Secret = rq.AccountSecret;
 
-            if (!context.DB.LoadItem(acc, out acc, context, out err))
+            if (!context.DB.LoadItem(tmpAcc, out acc, context, out err))
             {
-                if (err.Code == SimplexErrorCode.DBItemNonexistent)
-                    err = SimplexError.GetError(SimplexErrorCode.AuthAccountNonexistent);
-                acc = null;
-
-                return err;
+                
             }
+            err.Substitute(SimplexErrorCode.DBItemNonexistent, SimplexErrorCode.AuthAccountNonexistent);
 
-            return SimplexError.OK;
+            return err;
         }
         
-        public abstract SimplexError AuthUser(AuthServiceParamsLambda authParams, SimplexRequestContext context, out AuthAccount acc, out SimplexError err);
+        public abstract SimplexError AuthUser(AuthServiceParamsLambda authParams, SimplexRequestContext context, out AuthRequest authRq, out AuthAccount acc, out SimplexError err);
     }
 }

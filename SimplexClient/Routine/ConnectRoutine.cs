@@ -7,7 +7,7 @@ using Simplex.Protocol;
 
 namespace Simplex.Routine
 {
-    internal partial class Routines
+    public partial class Routines
     {
         public static async Task<SimplexResponse<SimplexServiceConfig>> ConnectRoutine(ISimplexClient client)
         {
@@ -24,7 +24,7 @@ namespace Simplex.Routine
             client.Config.Logger.Debug("received auth response");
             if (!rsp.Error)
             {
-                if (rsp.Error == SimplexError.GetError(SimplexErrorCode.AuthAccountNonexistent))
+                if (rsp.Error == SimplexErrorCode.AuthAccountNonexistent)
                     client.Config.Logger.Warn("Authentication attempt failed!");
                 else if (rsp.Error.Code == SimplexErrorCode.InvalidAuthCredentials)
                     client.Config.Logger.Error(rsp.Error);

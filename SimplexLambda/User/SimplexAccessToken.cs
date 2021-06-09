@@ -11,19 +11,69 @@ using System.IO.Compression;
 using Simplex.Serialization;
 using System.Text.Json.Serialization;
 using Simplex.Util;
+using Simplex.Protocol;
 
 namespace SimplexLambda.User
 {
-    [Flags]
-    public enum SimplexAccessFlags : ulong
+
+    public class SimplexAccessPermissions : ISmpSerializer
     {
-                  None = 0x0000000000000000,
+        [Flags]
+        public enum AccessFlags : ulong
+        {
 
-           GetUserData = 0x0000000000000001,
-           SetUserData = 0x0000000000000002,
-        UpdateUserData = 0x0000000000000004,
+            None = 0x0,
 
-                 Admin = 0x8000000000000000
+            DataOp_Get = 0x1,
+            DataOp_Set = 0x2,
+            DataOp_Update = 0x4,
+
+            //shortcuts
+            DataOp_All = 0x7,
+        }
+
+        private ulong userData_PrivateSelf;
+        public AccessFlags UserData_PrivateSelf { get => (AccessFlags)userData_PrivateSelf; set => userData_PrivateSelf = (ulong)value; }
+        private ulong userData_PublicSelf;
+        public AccessFlags UserData_PublicSelf { get => (AccessFlags)userData_PublicSelf; set => userData_PublicSelf = (ulong)value; }
+        private ulong userData_PrivateNonSelf;
+        public AccessFlags UserData_PrivateNonSelf { get => (AccessFlags)userData_PrivateNonSelf; set => userData_PrivateNonSelf = (ulong)value; }
+        private ulong userData_PublicNonSelf;
+        public AccessFlags UserData_PublicNonSelf { get => (AccessFlags)userData_PublicNonSelf; set => userData_PublicNonSelf = (ulong)value; }
+
+        public void Serialize(SmpSerializationStructure repo)
+        {
+            repo.UInt64(ref userData_PrivateSelf);
+            repo.UInt64(ref userData_PublicSelf);
+            repo.UInt64(ref userData_PrivateNonSelf);
+            repo.UInt64(ref userData_PublicNonSelf);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (!(obj is SimplexAccessPermissions perm))
+                return false;
+
+            return perm.userData_PrivateSelf == userData_PrivateSelf
+                && perm.userData_PublicSelf == userData_PublicSelf
+                && perm.userData_PrivateNonSelf == userData_PrivateNonSelf
+                && perm.userData_PublicNonSelf == userData_PublicNonSelf;
+        }
+
+        public override int GetHashCode()
+        {
+            return base.GetHashCode(); //pls stop crying at me
+        }
+
+        public static bool operator ==(SimplexAccessPermissions a, SimplexAccessPermissions b)
+        {
+            return a.Equals(b);
+        }
+
+        public static bool operator !=(SimplexAccessPermissions a, SimplexAccessPermissions b)
+        {
+            return !(a == b);
+        }
     }
 
     public class SimplexAccessToken : ISmpSerializer
@@ -31,26 +81,32 @@ namespace SimplexLambda.User
         static readonly Random _random = new Random();
         public static ISimplexLogger logger;
 
+#pragma warning disable CS0675
         private long _entropy = ((long)_random.Next() << 32) | _random.Next();
+#pragma warning restore CS0675
         [JsonIgnore]
         public long Entropy { get => _entropy; }
         private Guid _userGUID = Guid.Empty;
         [JsonIgnore]
         public Guid UserGUID { get => _userGUID; set => _userGUID = value; }
-        private ulong _accessFlags;
+        private SimplexAccessPermissions _permissions = new SimplexAccessPermissions();
         [JsonIgnore]
-        public SimplexAccessFlags AccessFlags { get => (SimplexAccessFlags)_accessFlags; set => _accessFlags = (ulong)value; }
+        public SimplexAccessPermissions Permissions { get => _permissions; set => _permissions = value; }
         private long _created;
         [JsonIgnore]
-        public DateTime Created { get => DateTime.FromBinary(_created); set => _created = value.ToBinary(); }
-        private string _clientId;
+        public DateTime CreatedUTC { get => DateTime.FromBinary(_created); set => _created = value.ToBinary(); }
+        private long _expires;
+        [JsonIgnore]
+        public DateTime ExpiresUTC { get => DateTime.FromBinary(_expires); set => _expires = value.ToBinary(); }
+        private StringWithLength _clientId = "";
         [JsonIgnore]
         public string ClientID { get => _clientId; set => _clientId = value; }
-
-        public SimplexAccessToken()
-        {
-            AccessFlags = SimplexAccessFlags.None;
-        }
+        private StringWithLength _authAccountID = "";
+        [JsonIgnore]
+        public string AuthAccountID { get => _authAccountID; set => _authAccountID = value; }
+        private AuthServiceIdentifier _serviceIdentifier = new AuthServiceIdentifier();
+        [JsonIgnore]
+        public AuthServiceIdentifier ServiceIdentifier { get => _serviceIdentifier; set => _serviceIdentifier = value; }
 
         public void Serialize(SmpSerializationStructure repo)
         {
@@ -64,28 +120,27 @@ namespace SimplexLambda.User
             repo.Bytes(ref sp);
             _userGUID = new Guid(sp);
 
-            repo.UInt64(ref _accessFlags);
-
+            repo.Serializer(ref _permissions);
             repo.Int64(ref _created);
+            repo.Int64(ref _expires);
+            repo.Serializer(ref _clientId);
+            repo.Serializer(ref _authAccountID);
+            repo.Serializer(ref _serviceIdentifier);
 
-            repo.String(ref _clientId);
-
-            logger?.Debug($"done serializing - {this}");
+            logger?.Debug($"done serializing - {this} - {repo.Size}");
         }
 
         public override bool Equals(object obj)
         {
-            SimplexAccessToken sat = obj as SimplexAccessToken;
-            if (sat == null)
+            if (!(obj is SimplexAccessToken token))
                 return false;
 
-            logger?.Debug($"this: {this}");
-            logger?.Debug($"sat: {sat}");
-
-            return this._entropy == sat._entropy
-                && this._userGUID == sat._userGUID
-                && this._accessFlags == sat._accessFlags
-                && this._created == sat._created;
+            return this._entropy == token._entropy
+                && this._userGUID == token._userGUID
+                && this._permissions == token._permissions
+                && this._created == token._created
+                && this._clientId == token._clientId
+                && this._authAccountID == token._authAccountID;
         }
 
         public byte[] SerializeSignAndEncrypt(RSA rsa, Aes aes, SimplexDiagnostics diag)
@@ -96,11 +151,15 @@ namespace SimplexLambda.User
             using (MemoryStream finalMs = new MemoryStream())
             using (CryptoStream cs = new CryptoStream(finalMs, aes.CreateEncryptor(), CryptoStreamMode.Write))
             {
-                this.SmpWrite(ms);
+                BinaryWriter bw = new BinaryWriter(finalMs);
+                bw.Write(this.SmpWrite(ms));
 
-                var dataStream = new RSASignedDataStream(cs, rsa as RSACryptoServiceProvider);
-                dataStream.logger = logger;
-                dataStream.WriteAndSign(ms.ToArray());
+                var dataStream = new RSASignedDataStream(cs, rsa as RSACryptoServiceProvider)
+                {
+                    logger = logger
+                };
+                var b = ms.ToArray();
+                dataStream.WriteAndSign(b);
 
                 cs.FlushFinalBlock();
 
@@ -116,22 +175,26 @@ namespace SimplexLambda.User
             using (MemoryStream ms = new MemoryStream(bytes))
             using (CryptoStream cs = new CryptoStream(ms, aes.CreateDecryptor(), CryptoStreamMode.Read))
             {
+                BinaryReader br = new BinaryReader(ms);
+                long size = br.ReadInt64();
+
                 byte[] sig = new byte[rsa.SignatureSize()];
-                byte[] data = new byte[this.SmpSize()];
+                byte[] data = new byte[size];
                 try
                 {
                     RSASignedDataStream dataStream = new RSASignedDataStream(cs, rsa as RSACryptoServiceProvider);
                     dataStream.logger = logger;
-                    if (!dataStream.ReadAndVerify(new Span<byte>(data, 0, data.Length)))
+                    if (!dataStream.ReadAndVerify(data.AsSpan()))
                     {
-                        err = SimplexError.GetError(SimplexErrorCode.AccessTokenInvalid);
+                        logger?.Error("couldn't verify token");
+                        err = SimplexErrorCode.AccessTokenInvalid;
                         return err;
                     }
                     logger?.Debug(new Span<byte>(data, 0, data.Length).ToHexString());
                 }
-                catch (CryptographicException ex)
+                catch (Exception ex)
                 {
-                    err = SimplexError.GetError(SimplexErrorCode.AccessTokenInvalid, ex.Message);
+                    err = SimplexError.Custom(SimplexErrorCode.AccessTokenInvalid, ex.Message);
                     return err;
                 }
 
@@ -145,21 +208,49 @@ namespace SimplexLambda.User
 
             diag.EndDiag(handle);
 
-            err = SimplexError.OK;
+            err = SimplexErrorCode.OK;
             return err;
+        }
+
+        public SimplexError ValidateAccessToken(SimplexRequestContext context, out SimplexError err)
+        {
+            var handle = context.DiagInfo.BeginDiag("VALIDATE_ACCESS_TOKEN");
+
+            SimplexError End(SimplexError inErr, out SimplexError outErr)
+            {
+                outErr = inErr;
+                context.DiagInfo.EndDiag(handle);
+                return outErr;
+            }
+
+            if (DateTime.UtcNow > ExpiresUTC)
+                return End(SimplexErrorCode.AccessTokenExpired, out err);
+
+            if (ClientID != context.Request.ClientID)
+                return End(SimplexErrorCode.AccessTokenInvalid, out err);
+
+            return End(SimplexErrorCode.OK, out err);
         }
 
         public override string ToString()
         {
-            return $"{_entropy} {_userGUID} {AccessFlags} {_created}";
+            return $"{_entropy} {_userGUID} {Permissions} {_created} {_clientId} {_authAccountID}";
         }
 
         public static SimplexError FromString(string token, SimplexRequestContext context, out SimplexAccessToken accessToken, out SimplexError err)
         {
-            var bytes = token.ToHexBytes();
-            accessToken = new SimplexAccessToken();
-            accessToken.DecryptVerifyAndDeserialize(bytes, context.RSA, context.AES, context.DiagInfo, out var decryptErr);
-            err = decryptErr;
+            if (string.IsNullOrEmpty(token))
+            {
+                context.Log.Warn("null token???");
+                accessToken = null;
+                err = SimplexErrorCode.AccessTokenInvalid;
+            }
+            else
+            {
+                var bytes = token.ToHexBytes();
+                accessToken = new SimplexAccessToken();
+                accessToken.DecryptVerifyAndDeserialize(bytes, context.RSA, context.AES, context.DiagInfo, out err);
+            }
             return err;
         }
     }

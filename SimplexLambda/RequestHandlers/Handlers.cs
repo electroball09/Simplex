@@ -16,32 +16,25 @@ namespace SimplexLambda.RequestHandlers
             { SimplexRequestType.UserData, () => new  UserDataRequestHandler() },
         };
 
-        public static SimplexResponse HandleRequest(SimplexRequestContext context)
+        public static SimplexError GetHandler(SimplexRequestContext context, out RequestHandler handler, out SimplexError err)
         {
-            var diagHandle = context.DiagInfo.BeginDiag("REQUEST_HANDLER");
+            handler = null;
 
-            context.Log.Debug($"handling request type of {context.Request.RequestType}");
-
-            RequestHandler handler = null;
-            if (_handlersMap.ContainsKey(context.Request.RequestType))
-                handler = _handlersMap[context.Request.RequestType]();
-
-            context.Log.Debug($"handler - {handler?.GetType()}");
-
-            SimplexResponse rsp;
-            if (handler == null)
-                rsp = new SimplexResponse(context.Request, SimplexError.GetError(SimplexErrorCode.InvalidRequestType));
+            if (!_handlersMap.TryGetValue(context.Request.RequestType, out var handlerCreater))
+                err = SimplexErrorCode.InvalidRequestType;
             else
-                rsp = handler.HandleRequest(context);
+            {
+                handler = handlerCreater();
+                err = SimplexErrorCode.OK;
+            }
 
-            context.DiagInfo.EndDiag(diagHandle);
-
-            return rsp;
+            return err;
         }
     }
 
     public abstract class RequestHandler
     {
+        public abstract bool RequiresAccessToken { get; }
         public abstract SimplexResponse HandleRequest(SimplexRequestContext context);
     }
 }

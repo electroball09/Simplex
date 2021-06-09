@@ -76,13 +76,14 @@ namespace Simplex
                     Logger.Debug($"Sending request of type {request.RequestType}");
 
                     var json = await RequestGetJson(request);
+
                     var el = JsonSerializer.Deserialize<JsonElement>(json);
                     bool isError = el.TryGetProperty("errorType", out var err);
                     Logger.Debug($"-request ID {request.RequestID} took {(DateTime.Now - request.CreatedTime).TotalMilliseconds} ms");
                     var rsp = JsonSerializer.Deserialize<T>(json);
                     if (isError)
                     {
-                        rsp.Error = SimplexError.GetError(SimplexErrorCode.Unknown, json);
+                        rsp.Error = SimplexError.Custom(SimplexErrorCode.Unknown, json);
                     }
                     rsp.DiagInfo?.DebugLog(Logger);
                     foreach (var o in rsp.Logs)

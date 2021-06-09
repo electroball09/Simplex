@@ -1,53 +1,72 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
-using Simplex.User;
+using Simplex.UserData;
 using System.Text.Json.Serialization;
+using System.Text.Json;
 
 namespace Simplex.Protocol
 {
     public enum UserDataRequestType
     {
-        _invalid = 0,
         GetUserData = 1,
         SetUserData = 2,
         UpdateUserData = 3
     }
 
-    public class UserData
-    {
-        public string _dataType { get; set; }
-        private object __item;
-        public object _item
-        { 
-            get
-            {
-                return __item;
-            }
-            set
-            {
-                __item = value;
-                _dataType = value.GetType().FullName;
-            }
-        }
-    }
-
-    public class UserDataResult : UserData
-    {
-        public SimplexError Error { get; set; }
-
-        public UserDataResult(UserData data) => _item = data;
-    }
-
     public class UserDataRequest
     {
-        public Guid UserGUID { get; set; }
         public UserDataRequestType RequestType { get; set; }
-        public List<UserData> UserDataList { get; set; } = new List<UserData>();
+        public Guid UserGUID { get; set; }
+        public List<UserDataOperation> UserDataList { get; set; } = new List<UserDataOperation>();
     }
 
     public class UserDataResponse
     {
+        public Guid UserGUID { get; set; }
         public List<UserDataResult> Results { get; set; } = new List<UserDataResult>();
+    }
+
+    public abstract class UserDataBase
+    {
+        public string __dataType { get; set; }
+        public string __dataJson { get; set; }
+
+        public UserDataBase() { }
+
+        public void SetDataJSON<T>(T obj)
+        {
+            __dataType = obj.GetType().Name;
+            __dataJson = JsonSerializer.Serialize<T>(obj);
+        }
+
+        public T GetData<T>()
+        {
+            return JsonSerializer.Deserialize<T>(__dataJson);
+        }
+    }
+
+    public class UserDataOperation : UserDataBase
+    {
+        public string CustomDataID { get; set; } = "";
+
+        internal string GetDBRange()
+        {
+            return __dataType + (string.IsNullOrEmpty(CustomDataID) ? "" : $"_{CustomDataID}");
+        }
+    }
+
+    public class UserDataResult : UserDataBase
+    {
+        public SimplexError Error { get; set; }
+
+        public UserDataResult(UserDataOperation data)
+        {
+            __dataType = data.__dataType;
+            __dataJson = data.__dataJson;
+        }
+
+        [Obsolete("dont use this")]
+        public UserDataResult() { }
     }
 }

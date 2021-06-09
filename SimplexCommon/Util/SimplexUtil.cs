@@ -66,11 +66,11 @@ namespace Simplex.Util
                 Encoding.UTF8.GetBytes(stringToEncrypt, sp);
                 rsa.TryEncrypt(sp, buffer.AsSpan(), RSAEncryptionPadding.Pkcs1, out int numBytes);
                 encryptedString = buffer.AsSpan(0, numBytes).ToHexString();
-                err = SimplexError.OK;
+                err = SimplexErrorCode.OK;
             }
             catch (CryptographicException ex)
             {
-                err = SimplexError.GetError(SimplexErrorCode.InvalidCryptographyConfiguration, ex.Message);
+                err = SimplexError.Custom(SimplexErrorCode.InvalidCryptographyConfiguration, ex.Message);
                 encryptedString = null;
             }
             return err;
@@ -82,12 +82,12 @@ namespace Simplex.Util
             {
                 Span<byte> decBytes = stringToDecrypt.ToHexBytes();
                 rsa.TryDecrypt(decBytes, buffer.AsSpan(), RSAEncryptionPadding.Pkcs1, out int numBytes);
-                err = SimplexError.OK;
+                err = SimplexErrorCode.OK;
                 decryptedString = Encoding.UTF8.GetString(buffer.AsSpan(0, numBytes));
             }
             catch (CryptographicException ex)
             {
-                err = SimplexError.GetError(SimplexErrorCode.InvalidCryptographyConfiguration, ex.Message);
+                err = SimplexError.Custom(SimplexErrorCode.InvalidCryptographyConfiguration, ex.Message);
                 decryptedString = null;
             }
             return err;

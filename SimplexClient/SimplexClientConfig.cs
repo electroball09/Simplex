@@ -16,6 +16,7 @@ namespace Simplex
                 Logger = old.Logger,
                 ClientID = old.ClientID,
                 GameName = old.GameName,
+                CreateAccountIfNonexistent = old.CreateAccountIfNonexistent
             };
 
             return copy;
@@ -26,6 +27,7 @@ namespace Simplex
         public string ClientID { get; set; }
         [MinLength(1)]
         public string GameName { get; set; }
+        public bool CreateAccountIfNonexistent { get; set; } = false;
 
         public SimplexClientConfig Copy()
         {

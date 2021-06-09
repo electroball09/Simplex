@@ -11,6 +11,7 @@ using Simplex.Util;
 using System.IO;
 using Simplex.Serialization;
 using Simplex.Protocol;
+using SimplexLambda.User;
 
 namespace SimplexLambda
 {
@@ -22,6 +23,7 @@ namespace SimplexLambda
             public string AESKeyHex { get; set; }
         }
 
+        public DateTime ConfigLastUpdated { get; set; }
         [MinLength(1)]
         public string SimplexTable { get; set; } = "";
         public bool DetailedErrors { get; set; } = false;
@@ -32,6 +34,9 @@ namespace SimplexLambda
         public AuthServiceParamsLambda[] AuthParams { get; set; } = new AuthServiceParamsLambda[0];
         [Range(1, 72)]
         public int RollingConfigExpirationHours { get; set; } = 24;
+        [Range(1, 100)]
+        public int MaxGetNewGUIDRetries { get; set; } = 10;
+        public SimplexAccessPermissions DefaultUserPermissions { get; set; }
 
         [ConfigClassValidator, JsonIgnore]
         public SimplexServiceConfig ServiceConfig { get; set; }
@@ -51,10 +56,6 @@ namespace SimplexLambda
             string json = varFunc("config");
 
             SimplexLambdaConfig cfg = JsonSerializer.Deserialize<SimplexLambdaConfig>(json);
-
-            cfg.AuthParams = new AuthServiceParamsLambda[]
-            {
-            };
 
             cfg.ServiceConfig = new SimplexServiceConfig()
             {
@@ -127,7 +128,7 @@ namespace SimplexLambda
         {
             if (list.Count == 0)
             {
-                return SimplexError.OK;
+                return SimplexErrorCode.OK;
             }
             if (errorStr == null)
             {
@@ -138,7 +139,7 @@ namespace SimplexLambda
                 errorStr = b.ToString();
             }
 
-            return SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration, errorStr);
+            return SimplexError.Custom(SimplexErrorCode.LambdaMisconfiguration, errorStr);
         }
 
         public SimplexError ValidateConfig()
@@ -159,13 +160,31 @@ namespace SimplexLambda
             return ProcessResults(results);
         }
 
-        public AuthServiceParamsLambda GetAuthParams(AuthType authType)
+        public AuthServiceParamsLambda GetAuthParamsFromType(AuthServiceIdentifier.AuthType authType)
         {
             foreach (var p in AuthParams)
-                if (p.Type == authType)
+                if (p.Identifier.Type == authType)
                     return p;
 
-            return null;
+            throw new InvalidOperationException($"Auth type {authType} was not found in auth params!");
+        }
+
+        public AuthServiceParamsLambda GetAuthParamsFromName(string name)
+        {
+            foreach (var p in AuthParams)
+                if (p.Identifier.Name == name)
+                    return p;
+
+            throw new InvalidOperationException($"Auth name {name} was not found in auth params!");
+        }
+
+        public AuthServiceParamsLambda GetAuthParamsFromIdentifier(AuthServiceIdentifier identifier)
+        {
+            foreach (var p in AuthParams)
+                if (p.Identifier == identifier)
+                    return p;
+
+            throw new InvalidOperationException($"Auth service {identifier} was not found in auth params!");
         }
     }
 }

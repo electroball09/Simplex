@@ -5,18 +5,19 @@ using Amazon.DynamoDBv2.DataModel;
 using System.Text.RegularExpressions;
 using Simplex.Protocol;
 using Simplex;
+using SimplexLambda;
 
 namespace SimplexLambda.DBSchema
 {
     public class AuthAccount
     {
-        public static AuthAccount Create(AuthServiceParamsLambda authParams, string id)
+        public static AuthAccount Create(AuthServiceIdentifier identifier, string id)
         {
 #pragma warning disable CS0618
             return new AuthAccount()
             {
                 AccountID = id,
-                AccountPrefix = $"{authParams.Type}_{authParams.AuthName}".ToUpper()
+                AuthServiceName = identifier.Name
             };
 #pragma warning restore CS0618
         }
@@ -40,7 +41,7 @@ namespace SimplexLambda.DBSchema
         }
 
         [DynamoDBIgnore]
-        public string AccountPrefix
+        public string AuthServiceName
         {
             get
             {
@@ -58,5 +59,17 @@ namespace SimplexLambda.DBSchema
         public string Secret { get; set; }
         public string Salt { get; set; }
         public Guid ConnectedUserGUID { get; set; }
+        public string EmailAddress { get; set; }
+        public DateTime LastAccessedUTC { get; set; }
+
+        public AuthAccountDetails ToAccountDetails(SimplexLambdaConfig cfg)
+        {
+            return new AuthAccountDetails()
+            {
+                AccountID = AccountID,
+                ServiceIdentifier = cfg.GetAuthParamsFromName(AuthServiceName).Identifier,
+                EmailAddress = EmailAddress,
+            };
+        }
     }
 }

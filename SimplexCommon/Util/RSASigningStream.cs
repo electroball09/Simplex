@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Text;
 using System.IO;
 using System.Security.Cryptography;
-using Simplex;
 using System.Runtime.CompilerServices;
 
 namespace Simplex.Util
@@ -72,14 +71,14 @@ namespace Simplex.Util
             {
                 if (!ReadAndVerifyData(output.Slice(i * _rsa.SignatureMaxDataSize(), _rsa.SignatureMaxDataSize())))
                 {
-                    Console.WriteLine($"failed on whole block {i}");
+                    logger?.Debug($"failed on whole block {i}");
                     return false;
                 }
             }
 
             if (!ReadAndVerifyData(output.Slice(numWholeBlocks * _rsa.SignatureMaxDataSize(), extraBytes)))
             {
-                Console.WriteLine($"failed on remainder {extraBytes}");
+                logger?.Debug($"failed on remainder {extraBytes}");
                 return false;
             }
 

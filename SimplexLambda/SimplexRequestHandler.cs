@@ -16,6 +16,7 @@ using Simplex.Protocol;
 using System.Text;
 using System.Security.Cryptography;
 using Simplex.Util;
+using SimplexLambda.User;
 
 [assembly: LambdaSerializer(typeof(DefaultLambdaJsonSerializer))]
 namespace SimplexLambda
@@ -25,6 +26,7 @@ namespace SimplexLambda
         public SimplexRequest Request { get; set; }
         public DBWrapper DB { get; set; }
         public ISimplexLogger Log { get; set; }
+        public SimplexAccessToken Token { get; set; }
         public SimplexLambdaConfig LambdaConfig { get; set; }
         public SimplexDiagnostics DiagInfo { get; set; }
         public RSACryptoServiceProvider RSA => LambdaConfig?.PrivateRSA;
@@ -47,8 +49,9 @@ namespace SimplexLambda
     {
         public static Func<string, string> ConfigLoadFunc { get; set; } = Environment.GetEnvironmentVariable;
         public static LambdaLogger Logger { get; set; } = new LambdaLogger(new ConsoleLogger());
-        static SimplexLambdaConfig LambdaConfig;
+        public static SimplexLambdaConfig LambdaConfig;
         static List<string> errorNamesErrors;
+        public static bool CatchExceptions { get; set; } = true;
 
         ILambdaContext context;
 
@@ -75,11 +78,11 @@ namespace SimplexLambda
             SimplexResponse EndRequest(SimplexResponse rsp, bool overrideIncludeDiag = false)
             {
                 if (rsp.Error == null)
-                    return new SimplexResponse(rq, SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration, "Error from handlers was null!"));
+                    return new SimplexResponse(rq, SimplexError.Custom(SimplexErrorCode.LambdaMisconfiguration, "Error from handlers was null!"));
                 diagInfo.EndDiag(diagHandle);
                 if (overrideIncludeDiag || LambdaConfig.IncludeDiagnosticInfo)
                     rsp.DiagInfo = diagInfo;
-                if (true)
+                if (true) //TODO: add environment var to control including logs with response
                     rsp.Logs = Logger.logs;
                 return rsp;
             }
@@ -97,7 +100,7 @@ namespace SimplexLambda
             Logger.Debug($"errors validated - {err.Code}");
 
             if (rq.RequestType == SimplexRequestType.PingPong)
-                return EndRequest(new SimplexResponse(rq, SimplexError.OK));
+                return EndRequest(new SimplexResponse(rq, SimplexErrorCode.OK));
 
             Logger.Debug("not ping pong");
 
@@ -106,27 +109,50 @@ namespace SimplexLambda
 
         public SimplexResponse HandleRequest(SimplexRequest rq, SimplexDiagnostics diagInfo)
         {
-            DBWrapper db = new DBWrapper(LambdaConfig);
+            var diag = diagInfo.BeginDiag("HANDLE_REQUEST");
 
             SimplexRequestContext context = new SimplexRequestContext()
             {
                 Request = rq,
-                DB = db,
+                DB = new DBWrapper(LambdaConfig),
                 Log = Logger,
                 LambdaConfig = LambdaConfig,
                 DiagInfo = diagInfo,
             };
 
-            //try
-            //{
-                return Handlers.HandleRequest(context);
-            //}
-            //catch (Exception ex)
-            //{
-            //    throw ex;
-            //    context.Log.Error(ex);
-            //    return new SimplexResponse(rq, SimplexError.GetError(SimplexErrorCode.Unknown, LambdaConfig.DetailedErrors ? ex.ToString() : ex.Message));
-            //}
+            if (!Handlers.GetHandler(context, out var handler, out var err))
+                return context.EndRequest(err, null, diag);
+
+            Logger.Debug($"Handler type: {handler.GetType().Name}");
+            
+            if (handler.RequiresAccessToken)
+            {
+                Logger.Debug("this request requires access token");
+
+                if (!SimplexAccessToken.FromString(context.Request.AccessToken, context, out var accessToken, out var tokenErr))
+                    return context.EndRequest(tokenErr, null, diag);
+
+                context.Token = accessToken;
+            }
+
+            SimplexResponse rsp;
+            if (CatchExceptions)
+            {
+                try
+                {
+                    rsp = handler.HandleRequest(context);
+                }
+                catch (Exception ex)
+                {
+                    context.Log.Error(ex);
+                    return new SimplexResponse(rq, SimplexError.Custom(SimplexErrorCode.Unknown, LambdaConfig.DetailedErrors ? ex.ToString() : ex.Message));
+                }
+            }
+            else
+            {
+                rsp = handler.HandleRequest(context);
+            }
+            return rsp;
         }
 
         public SimplexError LoadOrVerifyConfig(SimplexDiagnostics diagInfo, out SimplexError e)
@@ -162,10 +188,10 @@ namespace SimplexLambda
                 foreach (string str in errorNamesErrors)
                     b.Append($"{str}|");
                 b.Remove(b.Length - 1, 1);
-                e = SimplexError.GetError(SimplexErrorCode.LambdaMisconfiguration, b.ToString());
+                e = SimplexError.Custom(SimplexErrorCode.LambdaMisconfiguration, b.ToString());
             }
             else
-                e = SimplexError.OK;
+                e = SimplexErrorCode.OK;
 
             diagInfo.EndDiag(diagHandle);
 

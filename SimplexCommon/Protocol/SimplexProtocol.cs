@@ -59,12 +59,12 @@ namespace Simplex.Protocol
             {
                 obj = JsonSerializer.Deserialize<T>(((JsonElement)Payload).GetRawText());
 
-                err = SimplexError.OK;
+                err = SimplexErrorCode.OK;
             }
             catch (Exception ex)
             {
                 obj = null;
-                err = SimplexError.GetError(SimplexErrorCode.Unknown, ex.ToString());
+                err = SimplexError.Custom(SimplexErrorCode.InvalidPayloadType, ex.ToString());
             }
             return err;
         }
@@ -121,10 +121,9 @@ namespace Simplex.Protocol
                 if (Payload == null)
                     return null;
 
-                if (Payload is JsonElement element)
+                if (PayloadType == "JsonElement")
                 {
-                    Console.WriteLine("deserializing json");
-                    Payload = JsonSerializer.Deserialize<T>(element.GetRawText());
+                    return JsonSerializer.Deserialize<T>(((JsonElement)Payload).GetRawText());
                 }
 
                 return Payload as T;
@@ -133,7 +132,7 @@ namespace Simplex.Protocol
             {
                 Console.WriteLine($">>>>>>>>>>>>>>>>>>>> {ex}");
                 Logger?.Error(ex.Message);
-                return default(T);
+                return null;
             }
         }
     }

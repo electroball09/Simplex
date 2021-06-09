@@ -10,7 +10,7 @@ namespace Simplex.OAuthFormats
         public virtual string EmailAddress { get; set; } = "";
     }
 
-    public class GoogleOAuthAccountFormat : OAuthExtAccountFormat
+    public class GoogleOAuthExtAccountFormat : OAuthExtAccountFormat
     {
         public class GoogleEmailAddress
         {

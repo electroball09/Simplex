@@ -32,6 +32,7 @@ namespace SimplexLambda.Testing
             funcs = new SimplexLambdaFunctions();
             SimplexLambdaFunctions.Logger = new LambdaLogger(Logger);
             SimplexLambdaFunctions.ConfigLoadFunc = envVarFunc;
+            SimplexLambdaFunctions.CatchExceptions = false;
         }
 
         public Task<T> SendRequest<T>(SimplexRequest rq) where T : SimplexResponse

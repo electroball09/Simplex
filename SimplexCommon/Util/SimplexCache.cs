@@ -17,14 +17,13 @@ namespace Simplex.Util
         public static bool IndentJSON
         {
             get => serializerOptions.WriteIndented;
-            set => serializerOptions = new JsonSerializerOptions() { WriteIndented = value };
+            set { if (value != IndentJSON) serializerOptions = new JsonSerializerOptions() { WriteIndented = value }; }
         }
         public static bool UseAsyncMethods { get; set; } = true;
 
         public string cacheDir { get; }
         public string cacheId { get; }
         public string cacheSubdir { get; }
-
 
         private Dictionary<string, SimplexDataCache> dataCaches { get; set; } = new Dictionary<string, SimplexDataCache>();
 
@@ -34,7 +33,7 @@ namespace Simplex.Util
             cacheId = old.cacheId;
             cacheSubdir = old.cacheSubdir;
         }
-        internal SimplexDataCache(string dir, string id, string subdir)
+        public SimplexDataCache(string dir, string id, string subdir)
         {
             cacheDir = dir;
             cacheId = id;
@@ -76,7 +75,9 @@ namespace Simplex.Util
         {
             public static async Task SaveCache(SimplexDataCache<T> cache)
             {
-                using (FileStream fs = File.Open(cache.CacheFile.FullName, FileMode.OpenOrCreate))
+                if (!cache.CacheFile.Directory.Exists)
+                    Directory.CreateDirectory(cache.CacheFile.DirectoryName);
+                using (FileStream fs = File.Open(cache.CacheFile.FullName, FileMode.Create))
                 {
                     if (UseAsyncMethods)
                         await JsonSerializer.SerializeAsync<T>(fs, cache.Data, serializerOptions);
@@ -93,6 +94,8 @@ namespace Simplex.Util
 
             public static async Task LoadCache(SimplexDataCache<T> cache)
             {
+                if (!cache.CacheFile.Directory.Exists)
+                    Directory.CreateDirectory(cache.CacheFile.DirectoryName);
                 using (FileStream fs = File.Open(cache.CacheFile.FullName, FileMode.OpenOrCreate))
                 {
                     try
@@ -108,9 +111,8 @@ namespace Simplex.Util
                             }
                         }
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                        Console.WriteLine(ex.ToString());
                         cache.Data = new T();
                     }
                 }

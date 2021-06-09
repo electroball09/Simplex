@@ -9,37 +9,60 @@ namespace SimplexLambda.RequestHandlers
 {
     public class UserDataRequestHandler : RequestHandler
     {
+        public override bool RequiresAccessToken => true;
+
         public override SimplexResponse HandleRequest(SimplexRequestContext context)
         {
             var handle = context.DiagInfo.BeginDiag("USER_DATA_REQUEST_HANDLER");
 
-            SimplexAccessToken accessToken = new SimplexAccessToken();
-            SimplexAccessToken.FromString(context.Request.AccessToken, context, out accessToken, out var tokenErr);
-            if (!tokenErr)
-                return new SimplexResponse(context.Request, tokenErr);
+            if (!context.Request.PayloadAs<UserDataRequest>(out var dataRq, out var err))
+                return context.EndRequest(err, null, handle);
 
-            if (context.Request.PayloadAs<UserDataRequest>(out var dataRq, out _))
-                return context.EndRequest(SimplexError.GetError(SimplexErrorCode.InvalidPayloadType), null, handle);
-
-            SimplexAccessFlags requiredFlags = GetRequiredFlags(accessToken, dataRq);
-            if (!LambdaUtil.ValidateAccessToken(accessToken, requiredFlags, context, out var validateErr))
-                return context.EndRequest(validateErr, null, handle);
+            if (!ValidateAccess(context.Token, dataRq, out err))
+                return context.EndRequest(err, null, handle);
 
             List<UserDataResult> results = new List<UserDataResult>();
-            foreach (var rq in dataRq.UserDataList)
-                results.Add(new UserDataResult(rq) { Error = SimplexError.OK });
-            UserDataResponse rsp = new UserDataResponse();
-            rsp.Results = results;
-            return context.EndRequest(SimplexError.OK, rsp, handle);
+
+            foreach (var dataOp in dataRq.UserDataList)
+            {
+                UserDataResult result = null;
+                if (dataRq.RequestType == UserDataRequestType.GetUserData)
+                    context.DB.LoadUserData(dataRq.UserGUID, dataOp, context, out result, out _);
+                if (dataRq.RequestType == UserDataRequestType.SetUserData)
+                    context.DB.SaveUserData(dataRq.UserGUID, dataOp, context, out result, out _);
+                if (dataRq.RequestType == UserDataRequestType.UpdateUserData)
+                {
+                    //TODO finish this lmao
+                }
+                results.Add(result);
+            }
+
+            UserDataResponse rsp = new UserDataResponse
+            {
+                Results = results
+            };
+
+            return context.EndRequest(SimplexErrorCode.OK, rsp, handle);
         }
 
-        private SimplexAccessFlags GetRequiredFlags(SimplexAccessToken token, UserDataRequest dataRq)
+        public SimplexError ValidateAccess(SimplexAccessToken token, UserDataRequest dataRq, out SimplexError err)
         {
-            SimplexAccessFlags reqFlags = SimplexAccessFlags.None;
-            reqFlags = (SimplexAccessFlags)((ulong)SimplexAccessFlags.GetUserData << (int)dataRq.RequestType - 1);
-            if (token.UserGUID != dataRq.UserGUID)
-                reqFlags |= SimplexAccessFlags.Admin;
-            return reqFlags;
+            var flags = dataRq.RequestType.ToAccessFlags();
+            if (token.UserGUID == dataRq.UserGUID)
+            {
+                if ((token.Permissions.UserData_PrivateSelf & flags) > 0)
+                    err = SimplexErrorCode.OK;
+                else
+                    err = SimplexErrorCode.PermissionDenied;
+            }
+            else
+            {
+                if ((token.Permissions.UserData_PrivateNonSelf & flags) > 0)
+                    err = SimplexErrorCode.OK;
+                else
+                    err = SimplexErrorCode.PermissionDenied;
+            }
+            return err;
         }
     }
 }

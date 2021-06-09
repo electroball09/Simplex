@@ -6,46 +6,81 @@ using Amazon;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DataModel;
 using SimplexLambda.User;
-using Simplex.User;
+using Simplex.UserData;
 using Simplex;
-using Amazon.DynamoDBv2.Model;
+using Amazon.DynamoDBv2.DocumentModel;
+using Simplex.Protocol;
 
 namespace SimplexLambda
 {
     public class DBWrapper //: IUserDataLoader
     {
-        private AmazonDynamoDBClient Client;
-        private DynamoDBContext Context;
-        private DynamoDBOperationConfig Cfg;
-        private SimplexLambdaConfig LambdaConfig;
+        private AmazonDynamoDBClient dbClient;
+        private DynamoDBContext dbContext;
+        private DynamoDBOperationConfig dbCfg;
+        private Table dbTable;
+        private GetItemOperationConfig getOpCfg = new GetItemOperationConfig();
+        private PutItemOperationConfig putOpCfg = new PutItemOperationConfig();
 
         public DBWrapper(SimplexLambdaConfig lambdaConfig)
         {
-            LambdaConfig = lambdaConfig;
-            Client = new AmazonDynamoDBClient(RegionEndpoint.USWest1);
-            Context = new DynamoDBContext(Client);
-            Cfg = new DynamoDBOperationConfig()
+            dbClient = new AmazonDynamoDBClient(RegionEndpoint.USWest1);
+            dbContext = new DynamoDBContext(dbClient);
+            dbCfg = new DynamoDBOperationConfig()
             {
-                OverrideTableName = LambdaConfig.SimplexTable
+                OverrideTableName = lambdaConfig.SimplexTable
             };
+            dbTable = Table.LoadTable(dbClient, lambdaConfig.SimplexTable);
+            getOpCfg.ConsistentRead = true;
+        }
+
+        public SimplexError LoadUserData(Guid userGUID, UserDataOperation dataOp, SimplexRequestContext context, out UserDataResult result, out SimplexError err)
+        {
+            var diag = context.DiagInfo.BeginDiag($"DB_LOAD_[{dataOp.__dataType}]");
+            string range = dataOp.GetDBRange();
+            var t = dbTable.GetItemAsync(userGUID, range, getOpCfg);
+            t.Wait();
+            result = new UserDataResult(dataOp);
+            result.Error = t.Result == null ? SimplexErrorCode.DBItemNonexistent : SimplexErrorCode.OK;
+            if (t.Result != null)
+            {
+                result.__dataJson = t.Result.ToJson();
+            }
+            context.DiagInfo.EndDiag(diag);
+            err = result.Error;
+            return err;
+        }
+
+        public SimplexError SaveUserData(Guid userGUID, UserDataOperation dataOp, SimplexRequestContext context, out UserDataResult result, out SimplexError err)
+        {
+            var diag = context.DiagInfo.BeginDiag($"DB_SAVE_[{dataOp.__dataType}]");
+            Document doc = Document.FromJson(dataOp.__dataJson);
+            doc["Hash"] = userGUID.ToString();
+            doc["Range"] = dataOp.GetDBRange();
+            var task = dbTable.PutItemAsync(doc);
+            task.Wait();
+            result = new UserDataResult(dataOp);
+            context.DiagInfo.EndDiag(diag);
+            err = SimplexErrorCode.OK;
+            return err;
         }
 
         public SimplexError LoadItem<T>(T obj, out T Item, SimplexRequestContext context, out SimplexError err)
         {
-            string diagName = $"DB_LOAD_[{obj.GetType().Name}]";
-            var diagHandle = context.DiagInfo.BeginDiag(diagName);
-            var task = Context.LoadAsync(obj, Cfg);
+            var diagHandle = context.DiagInfo.BeginDiag($"DB_LOAD_[{obj.GetType().Name}]");
+            var task = dbContext.LoadAsync(obj, dbCfg);
             task.Wait();
             Item = task.Result;
-            err = task.Result == null ? SimplexError.GetError(SimplexErrorCode.DBItemNonexistent) : SimplexError.OK;
+            err = task.Result == null ? SimplexErrorCode.DBItemNonexistent : SimplexErrorCode.OK;
             context.DiagInfo.EndDiag(diagHandle);
             return err;
         }
 
-        public SimplexError SaveItem<T>(T obj)
+        public SimplexError SaveItem<T>(T obj, out SimplexError err)
         {
-            Context.SaveAsync(obj, Cfg).Wait();
-            return SimplexError.OK;
+            dbContext.SaveAsync(obj, dbCfg).Wait();
+            err = SimplexErrorCode.OK;
+            return err;
         }
     }
 }

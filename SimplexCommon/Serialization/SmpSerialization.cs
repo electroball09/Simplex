@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using System.IO;
+using System.Buffers.Binary;
 
 namespace Simplex.Serialization
 {
@@ -12,16 +13,18 @@ namespace Simplex.Serialization
 
     public static class SmpSerialization
     {
-        public static void SmpRead(this ISmpSerializer serializer, Stream stream)
+        public static long SmpRead(this ISmpSerializer serializer, Stream stream)
         {
             SmpSerializationStructureRead read = new SmpSerializationStructureRead(stream);
             serializer.Serialize(read);
+            return read.Size;
         }
 
-        public static void SmpWrite(this ISmpSerializer serializer, Stream stream)
+        public static long SmpWrite(this ISmpSerializer serializer, Stream stream)
         {
             SmpSerializationStructureWrite write = new SmpSerializationStructureWrite(stream);
             serializer.Serialize(write);
+            return write.Size;
         }
 
         public static long SmpSize(this ISmpSerializer serializer)
@@ -65,13 +68,16 @@ namespace Simplex.Serialization
     public class SmpSerializationStructureWrite : SmpSerializationStructure
     {
         public override bool IsRead => false;
-        public override int Size => (int)_stream.Position;
+        public override int Size => (int)(_stream.Position - _origStreamPosition);
+
+        private long _origStreamPosition;
 
         BinaryWriter _bw;
 
         public SmpSerializationStructureWrite(Stream stream)
             : base(stream)
         {
+            _origStreamPosition = stream.Position;
             _bw = new BinaryWriter(stream, Encoding.UTF8);
         }
 
@@ -87,13 +93,17 @@ namespace Simplex.Serialization
     public class SmpSerializationStructureRead : SmpSerializationStructure
     {
         public override bool IsRead => true;
-        public override int Size => (int)_stream.Length;
+        public override int Size => (int)(_stream.Length - _origStreamPosition);
+
+        private long _origStreamPosition;
+
 
         BinaryReader _br;
 
         public SmpSerializationStructureRead(Stream stream)
             : base(stream)
         {
+            _origStreamPosition = stream.Position;
             _br = new BinaryReader(stream, Encoding.UTF8);
         }
 
@@ -119,6 +129,6 @@ namespace Simplex.Serialization
         protected override void Int64Impl(ref long value) => size += sizeof(long);
         protected override void UInt64Impl(ref ulong value) => size += sizeof(ulong);
         protected override void ByteImpl(ref byte value) => size += sizeof(byte);
-        protected override void StringImpl(ref string value) => size += Encoding.UTF8.GetByteCount(value);
+        protected override void StringImpl(ref string value) => size += string.IsNullOrEmpty(value) ? 1 : Encoding.UTF8.GetByteCount(value);
     }
 }

@@ -13,11 +13,12 @@ namespace SimplexLambda.Auth
 {
     public class OAuthProvider : AuthProvider
     {
-        public override SimplexError AuthUser(AuthServiceParamsLambda authParams, SimplexRequestContext context, out AuthAccount acc, out SimplexError err)
+        public override SimplexError AuthUser(AuthServiceParamsLambda authParams, SimplexRequestContext context, out AuthRequest authRq, out AuthAccount acc, out SimplexError err)
         {
             var diag = context.DiagInfo.BeginDiag("OAUTH_AUTH_USER");
 
             acc = null;
+            authRq = null;
 
             SimplexError EndRequest(SimplexError error)
             {
@@ -28,32 +29,24 @@ namespace SimplexLambda.Auth
             if (!context.Request.PayloadAs<OAuthRequestAuthAccount>(out var oauthRq, out err))
                 return EndRequest(err);
 
-            RestRequest restRq = new RestRequest(authParams.OAuthAccountDataRequestURL);
-            restRq.Method = Method.GET;
-            restRq.AddHeader($"Authorization", $"Bearer {oauthRq.TokenData.access_token}");
-            restRq.AddHeader("Client-Id", authParams.OAuthClientID);
-            foreach (var kvp in authParams.OAuthAdditionalQueryParameters)
-                restRq.AddQueryParameter(kvp.Key, kvp.Value);
-            if (!context.RestClient.EZSendRequest(restRq, context.DiagInfo, out var rsp, out err))
-                return EndRequest(err);
-            context.Log.Debug(rsp.Content);
+            authRq = oauthRq;
 
-            JsonDocument doc = JsonDocument.Parse(rsp.Content);
+            var accountID = oauthRq.TokenData.IDToken.idFields.sub;
+            var email = oauthRq.TokenData.IDToken.idFields.email;
 
-            if (doc.GetError(out var errStr))
-                return EndRequest(SimplexError.GetError(SimplexErrorCode.Unknown, errStr));
+            context.Log.Debug($">>> account id {accountID}");
+            context.Log.Debug($">>> email {email}");
 
-            var accountID = doc.RootElement.EvaluateString(authParams.OAuthAccountDataAccountIDLocator);
-            var email = doc.RootElement.EvaluateString(authParams.OAuthAccountDataEmailAddressLocator);
-
-            oauthRq.AccountID = accountID.GetString();
+            oauthRq.AccountID = accountID;
 
             if (!LoadAccount(oauthRq, authParams, context, out acc, out err))
             {
                 return EndRequest(err);
             }
 
-            err = SimplexError.OK;
+            acc.EmailAddress = email;
+
+            err = SimplexErrorCode.OK;
             return EndRequest(err);
         }
     }

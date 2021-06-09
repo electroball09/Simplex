@@ -6,7 +6,7 @@ using RestSharp;
 using System.Text.Json;
 using RestSharp.Serializers.SystemTextJson;
 using System.Threading.Tasks;
-using Simplex.User;
+using Simplex.UserData;
 using Simplex.Routine;
 using Simplex.Transport;
 using Simplex.Util;
@@ -29,8 +29,7 @@ namespace Simplex
         SimplexClientState CLIENT_STATE { get; }
         SimplexClientConfig Config { get; }
         SimplexServiceConfig ServiceConfig { get; }
-        AccessCredentials AccessCredentials { get; }
-        AuthRequest LoggedInUser { get; }
+        AuthResponse LoggedInUser { get; }
         ISimplexTransport Transport { get; }
         SimplexDataCache ClientCache { get; }
 
@@ -39,7 +38,7 @@ namespace Simplex
         Task SendPing();
         Task Connect();
         Task<SimplexResponse<AuthResponse>> LoginBasicAccount(string accountId, string accountPw);
-        Task<SimplexResponse<AuthResponse>> LoginOAuth(AuthType authType);
+        Task<SimplexResponse<AuthResponse>> LoginOAuth(AuthServiceIdentifier serviceIdentifier);
     }
 
     public class SimplexClient<TTransport> : ISimplexClient where TTransport : ISimplexTransport
@@ -49,8 +48,7 @@ namespace Simplex
         public SimplexClientConfig Config { get; }
         public SimplexServiceConfig ServiceConfig { get; private set; }
         
-        public AccessCredentials AccessCredentials { get; private set; }
-        public AuthRequest LoggedInUser { get; private set; }
+        public AuthResponse LoggedInUser { get; private set; }
 
         public SimplexDataCache ClientCache { get; private set; }
         public SimplexDataCache UserCache { get; private set; }
@@ -137,64 +135,73 @@ namespace Simplex
             return task;
         }
 
-        private AuthServiceParams LoginFlowAndGetAuthParams(AuthType authType)
+        private AuthServiceParams LoginFlow_BeginAndGetAuthParams(AuthServiceIdentifier serviceIdentifier)
         {
+            logger.Info($"Begin login flow for service {serviceIdentifier}");
+
             if (CLIENT_STATE < SimplexClientState.Connected)
                 throw new InvalidOperationException("Must call Connect() first.");
 
             if (CLIENT_STATE > SimplexClientState.Connected)
                 throw new InvalidOperationException("Client is already logging in or has logged in");
 
-            var authParams = ServiceConfig.GetAuthParams(authType);
+            var authParams = ServiceConfig.GetParamsByIdentifier(serviceIdentifier);
             if (authParams == null)
-                throw new InvalidOperationException($"Auth params for {authType} were not found in service config!");
+                throw new InvalidOperationException($"Auth params for {serviceIdentifier} were not found in service config!");
 
             if (!authParams.Enabled)
-                throw new InvalidOperationException($"Auth type {authType} is not enabled on the service!");
+                throw new InvalidOperationException($"Auth service {serviceIdentifier} is not enabled on the service!");
 
             CLIENT_STATE = SimplexClientState.LoggingIn;
             return authParams;
         }
 
-        private Task<SimplexResponse<AuthResponse>> LoginBase(AuthType authType, string id, string secret)
+        private async Task LoginFlow_OnAuthResponseReceived(SimplexResponse<AuthResponse> rsp)
         {
-            var authParams = LoginFlowAndGetAuthParams(authType);
+            if (!rsp.Error)
+            {
+                logger.Error($"Login failed! {rsp.Error}");
+                CLIENT_STATE = SimplexClientState.Connected;
+            }
+            else
+            {
+                logger.Info("Logged in successfully!");
+                LoggedInUser = rsp.Data;
+                CLIENT_STATE = SimplexClientState.LoggedIn;
 
-            logger.Info($"SimplexClient - logging into {authType} account");
+                await Routines.CacheLoggedInUser(this, LoggedInUser);
+            }
+        }
+
+        public Task<SimplexResponse<AuthResponse>> LoginBasicAccount(string accountId, string accountPassword)
+        {
+            var authParams = LoginFlow_BeginAndGetAuthParams(ServiceConfig.GetParamsByType(AuthServiceIdentifier.AuthType.Basic).Identifier);
+
+            var hashedPassword = _sha.ComputeHash(Encoding.UTF8.GetBytes(accountPassword)).AsSpan().ToHexString();
 
             return Task.Run
                 (async () =>
                 {
-                    if (!SimplexUtil.EncryptString(ServiceConfig.RSA, secret, out string encSecret, out var encryptErr))
+                    if (!SimplexUtil.EncryptString(ServiceConfig.RSA, hashedPassword, out string encSecret, out var encryptErr))
                     {
-                        logger.Error($"{encryptErr.Code} - {encryptErr.Message}");
+                        logger.Error($"{encryptErr}");
                         CLIENT_STATE = SimplexClientState.Connected;
                         return null;
                     }
 
                     AuthRequest rq = new AuthRequest()
                     {
-                        AccountID = id,
+                        AccountID = accountId,
                         AccountSecret = encSecret,
-                        AuthType = authType
+                        ServiceIdentifier = authParams.Identifier,
+                        CreateAccountIfNonexistent = Config.CreateAccountIfNonexistent
                     };
 
                     try
                     {
                         var rsp = await Routines.AuthAccount(this, rq);
 
-                        if (rsp.Error)
-                        {
-                            AccessCredentials = rsp.Data.Credentials;
-                            LoggedInUser = rq;
-                            CLIENT_STATE = SimplexClientState.LoggedIn;
-                            logger.Info("SimplexClient - Logged in successfully!");
-                        }
-                        else
-                        {
-                            CLIENT_STATE = SimplexClientState.Connected;
-                            logger.Error($"Could not log in! {rsp.Error}");
-                        }
+                        await LoginFlow_OnAuthResponseReceived(rsp);
 
                         return rsp;
                     }
@@ -207,25 +214,40 @@ namespace Simplex
                 });
         }
 
-        public Task<SimplexResponse<AuthResponse>> LoginBasicAccount(string accountId, string accountPassword)
+        public Task<SimplexResponse<AuthResponse>> LoginOAuth(AuthServiceIdentifier serviceIdentifier)
         {
-            var hashedPassword = _sha.ComputeHash(Encoding.UTF8.GetBytes(accountPassword)).AsSpan().ToHexString();
-            return LoginBase(AuthType.Basic, accountId, hashedPassword);
-        }
-
-        public Task<SimplexResponse<AuthResponse>> LoginOAuth(AuthType authType)
-        {
-            if (!authType.HasFlag(AuthType.IsOAuth))
+            if (!serviceIdentifier.IsOAuth)
                 throw new InvalidOperationException("Must be a valid OAuth type!");
 
-            var authParams = LoginFlowAndGetAuthParams(authType);
-            
+            var authParams = LoginFlow_BeginAndGetAuthParams(serviceIdentifier);
+
             return Task.Run
                 (async () =>
                 {
-                    var auth = await Routines.OAuthAuthenticate(this, authParams);
-                    var oauthToken = await Routines.OAuthRequestToken(this, auth, authParams);
-                    var rsp = await Routines.OAuthAuthAccount(this, oauthToken.Data.TokenData, authParams);
+                    logger.Info($"Trying to locate cached OAuth token for {authParams.Identifier}...");
+                    var tok = await Routines.OAuthTryLocateCachedToken(this, authParams.Identifier);
+                    if (tok != null)
+                    {
+                        if (DateTime.UtcNow > tok.UTCTimeRequested + TimeSpan.FromSeconds(tok.expires_in))
+                        {
+                            logger.Info("Cached token has expired, refreshing token...");
+                            tok = (await Routines.OAuthRefreshToken(this, tok, authParams)).Data.TokenData;
+                        }
+                        else
+                        {
+                            logger.Info("Found cached token!");
+                        }
+                    }
+                    else
+                    {
+                        logger.Info("Could not locate cached token, authenticating user...");
+                        var auth = await Routines.OAuthAuthenticate(this, authParams);
+                        tok = (await Routines.OAuthRequestToken(this, auth, authParams)).Data.TokenData;
+                    }
+                    var rsp = await Routines.OAuthAuthAccount(this, tok, authParams);
+
+                    await LoginFlow_OnAuthResponseReceived(rsp);
+
                     return rsp;
                 });
         }

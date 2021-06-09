@@ -13,14 +13,73 @@ using Flurl;
 
 namespace Simplex
 {
+    public class AuthServiceIdentifier : ISmpSerializer
+    {
+        public enum AuthType : byte
+        {
+            IsOAuth = 0b10000000,
+
+            Basic = 0x01,
+            Google = 0x02 | IsOAuth,
+            Steam = 0x03,
+            Twitch = 0x04 | IsOAuth,
+
+            MAX = 0x80,
+            INVALID = 0x00
+        }
+
+        private byte _type;
+        public AuthType Type { get => (AuthType)_type; set => _type = (byte)value; }
+        private StringWithLength _name = new StringWithLength("");
+        public string Name { get => _name; set => _name.SetString(value); }
+
+        [JsonIgnore]
+        public bool IsOAuth { get => Type.HasFlag(AuthType.IsOAuth); }
+
+        public void Serialize(SmpSerializationStructure repo)
+        {
+            repo.Byte(ref _type);
+            repo.Serializer(ref _name);
+        }
+
+        public override string ToString()
+        {
+            return $"{Type} - {Name}";
+        }
+
+        public override int GetHashCode()
+        {
+            return _name.GetHashCode();
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (!(obj is AuthServiceIdentifier identifier))
+                return false;
+
+            return identifier.Name == Name
+                && identifier.Type == Type;
+        }
+        
+        public static bool operator ==(AuthServiceIdentifier a, AuthServiceIdentifier b)
+        {
+            return a.Equals(b);
+        }
+
+        public static bool operator !=(AuthServiceIdentifier a, AuthServiceIdentifier b)
+        {
+            return !(a == b);
+        }
+    }
+
     public class AuthServiceParams
     {
-        public AuthType Type { get; set; }
-        public string AuthName { get; set; }
+        public AuthServiceIdentifier Identifier { get; set; } = new AuthServiceIdentifier();
         public bool Enabled { get; set; }
 
         public string OAuthClientID { get; set; }
         public string OAuthAuthenticationURL { get; set; }
+        public string OAuthClaimsString { get; set; }
         public string OAuthScopeString { get; set; }
 
         protected AuthServiceParams() { }
@@ -31,7 +90,8 @@ namespace Simplex
                 .SetQueryParam("client_id", OAuthClientID)
                 .SetQueryParam("redirect_uri", redirect_uri)
                 .SetQueryParam("response_type", "code")
-                .SetQueryParam("scope", OAuthScopeString);
+                .SetQueryParam("scope", OAuthScopeString)
+                .SetQueryParam("claims", OAuthClaimsString, isEncoded: true);
         }
     }
 
@@ -39,11 +99,7 @@ namespace Simplex
     {
         public string OAuthClientSecret { get; set; }
         public string OAuthTokenURL { get; set; }
-        public int OAuthTokenResponseDataID { get; set; }
-        public string OAuthAccountDataRequestURL { get; set; }
-        public Dictionary<string, string> OAuthAdditionalQueryParameters { get; set; } = new Dictionary<string, string>();
-        public string OAuthAccountDataAccountIDLocator { get; set; }
-        public string OAuthAccountDataEmailAddressLocator { get; set; }
+        public int OAuthTokenResponseDataTypeID { get; set; }
 
         public string CreateTokenRequestURL(string authCode, string redirect_uri)
         {
@@ -53,6 +109,15 @@ namespace Simplex
                 .SetQueryParam("code", authCode)
                 .SetQueryParam("grant_type", "authorization_code")
                 .SetQueryParam("redirect_uri", redirect_uri);
+        }
+
+        public string CreateTokenRefreshURL(string refresh_token)
+        {
+            return OAuthTokenURL
+                .SetQueryParam("client_id", OAuthClientID)
+                .SetQueryParam("client_secret", OAuthClientSecret)
+                .SetQueryParam("grant_type", "refresh_token")
+                .SetQueryParam("refresh_token", refresh_token);
         }
     }
 
@@ -88,10 +153,19 @@ namespace Simplex
             }
         }
 
-        public AuthServiceParams GetAuthParams(AuthType type)
+        public AuthServiceParams GetParamsByType(AuthServiceIdentifier.AuthType type)
         {
             foreach (var a in AuthParams)
-                if (a.Type == type)
+                if (a.Identifier.Type == type)
+                    return a;
+
+            return null;
+        }
+
+        public AuthServiceParams GetParamsByIdentifier(AuthServiceIdentifier identifier)
+        {
+            foreach (var a in AuthParams)
+                if (a.Identifier == identifier)
                     return a;
 
             return null;
