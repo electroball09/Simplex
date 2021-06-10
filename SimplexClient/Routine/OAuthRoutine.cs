@@ -54,7 +54,7 @@ namespace Simplex.Routine
             return data;
         }
 
-        public static async Task<SimplexResponse<OAuthRequestTokenResponse>> OAuthRequestToken(ISimplexClient client, OAuthAuthenticationData authData, AuthServiceParams authParams)
+        public static async Task<SimplexResult<OAuthTokenResponse>> OAuthRequestToken(ISimplexClient client, OAuthAuthenticationData authData, AuthServiceParams authParams)
         {
             var authRq = new OAuthRequestTokenRequest()
             {
@@ -64,19 +64,22 @@ namespace Simplex.Routine
 
             SimplexRequest rq = new SimplexRequest(SimplexRequestType.OAuth, authRq);
 
-            var rsp = await client.SendRequest<OAuthRequestTokenResponse>(rq);
+            var rsp = await client.SendRequest(rq);
 
-            if (!rsp.Error)
-            {
-                client.Config.Logger.Error(rsp.Error);
-            }
+            await rsp.Result.GetAsyncSome<OAuthTokenResponse>
+                ((err) =>
+                {
+                    client.Config.Logger.Error(err);
+                },
+                async (tokenRsp) =>
+                {
+                    await OAuthCacheToken(client, tokenRsp.TokenData, authParams.Identifier);
+                });
 
-            await OAuthCacheToken(client, rsp.Data.TokenData, authParams.Identifier);
-
-            return rsp;
+            return rsp.Result.To<OAuthTokenResponse>();
         }
 
-        public static async Task<SimplexResponse<OAuthRequestTokenResponse>> OAuthRefreshToken(ISimplexClient client, OAuthTokenResponseData token, AuthServiceParams authParams)
+        public static async Task<SimplexResult<OAuthTokenResponse>> OAuthRefreshToken(ISimplexClient client, OAuthTokenResponseData token, AuthServiceParams authParams)
         {
             var oauthRq = new OAuthRefreshTokenRequest()
             {
@@ -86,19 +89,22 @@ namespace Simplex.Routine
 
             SimplexRequest rq = new SimplexRequest(SimplexRequestType.OAuth, oauthRq);
 
-            var rsp = await client.SendRequest<OAuthRequestTokenResponse>(rq);
+            var rsp = await client.SendRequest(rq);
 
-            if (!rsp.Error)
-            {
-                client.Config.Logger.Error(rsp.Error);
-            }
+            await rsp.Result.GetAsyncSome<OAuthTokenResponse>
+                ((err) =>
+                {
+                    client.Config.Logger.Error(err);
+                },
+                async (tokenRsp) =>
+                {
+                    await OAuthCacheToken(client, tokenRsp.TokenData, authParams.Identifier);
+                });
 
-            await OAuthCacheToken(client, rsp.Data.TokenData, authParams.Identifier);
-
-            return rsp;
+            return rsp.Result.To<OAuthTokenResponse>();
         }
 
-        public static async Task<SimplexResponse<AuthResponse>> OAuthAuthAccount(ISimplexClient client, OAuthTokenResponseData tokenData, AuthServiceParams authParams)
+        public static async Task<SimplexResult<AuthResponse>> OAuthAuthAccount(ISimplexClient client, OAuthTokenResponseData tokenData, AuthServiceParams authParams)
         {
             OAuthRequestAuthAccount oauthRq = new OAuthRequestAuthAccount()
             {
@@ -107,18 +113,16 @@ namespace Simplex.Routine
                 CreateAccountIfNonexistent = client.Config.CreateAccountIfNonexistent,
             };
 
-            client.Config.Logger.Debug($"************************************************ {oauthRq.CreateAccountIfNonexistent}");
-
             SimplexRequest rq = new SimplexRequest(SimplexRequestType.Auth, oauthRq);
 
-            var rsp = await client.SendRequest<AuthResponse>(rq);
+            var rsp = await client.SendRequest(rq);
 
-            if (!rsp.Error)
+            if (!rsp.Result.Error)
             {
-                client.Config.Logger.Error(rsp.Error);
+                client.Config.Logger.Error(rsp.Result.Error);
             }
 
-            return rsp;
+            return rsp.Result.To<AuthResponse>();
         }
     }
 }

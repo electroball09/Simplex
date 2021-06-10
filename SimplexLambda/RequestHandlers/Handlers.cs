@@ -35,6 +35,6 @@ namespace SimplexLambda.RequestHandlers
     public abstract class RequestHandler
     {
         public abstract bool RequiresAccessToken { get; }
-        public abstract SimplexResponse HandleRequest(SimplexRequestContext context);
+        public abstract SimplexResult HandleRequest(SimplexRequestContext context);
     }
 }

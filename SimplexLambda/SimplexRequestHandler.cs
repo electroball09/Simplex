@@ -34,14 +34,10 @@ namespace SimplexLambda
         public SHA256 SHA { get; } = SHA256.Create();
         public RestClientWrapper RestClient { get; } = new RestClientWrapper();
 
-        public SimplexResponse EndRequest(SimplexError err, object payload, SimplexDiagnostics.DiagHandle diagHandle, Action action = null)
+        public SimplexResult EndRequest(SimplexResult result, SimplexDiagnostics.DiagHandle diagHandle)
         {
-            action?.Invoke();
             DiagInfo.EndDiag(diagHandle);
-            if (!err)
-                return new SimplexResponse(Request, err);
-            else
-                return new SimplexResponse(Request, err) { Payload = payload };
+            return result;
         }
     }
 
@@ -55,18 +51,13 @@ namespace SimplexLambda
 
         ILambdaContext context;
 
-        public SimplexResponse SimplexRequestHandler(SimplexRequest rq, ILambdaContext ct)
+        public SimplexLambdaResponse SimplexRequestHandler(SimplexRequest rq, ILambdaContext ct)
         {
             context = ct;
             return SimplexHandler(rq);
         }
 
-        //public SimplexResponse SimplexAdminRequestHandler(SimplexRequest rq, ILambdaContext ct)
-        //{
-
-        //}
-
-        public SimplexResponse SimplexHandler(SimplexRequest rq)
+        public SimplexLambdaResponse SimplexHandler(SimplexRequest rq)
         {
             Logger.logs.Clear();
 
@@ -75,39 +66,36 @@ namespace SimplexLambda
             SimplexDiagnostics diagInfo = new SimplexDiagnostics();
             var diagHandle = diagInfo.BeginDiag("REQUEST_OVERALL");
 
-            SimplexResponse EndRequest(SimplexResponse rsp, bool overrideIncludeDiag = false)
+            SimplexLambdaResponse EndRequest(SimplexRequest rq, SimplexResult result, bool includeDiag)
             {
-                if (rsp.Error == null)
-                    return new SimplexResponse(rq, SimplexError.Custom(SimplexErrorCode.LambdaMisconfiguration, "Error from handlers was null!"));
+                SimplexLambdaResponse rsp = new SimplexLambdaResponse(rq, result);
                 diagInfo.EndDiag(diagHandle);
-                if (overrideIncludeDiag || LambdaConfig.IncludeDiagnosticInfo)
+                if (includeDiag)
                     rsp.DiagInfo = diagInfo;
                 if (true) //TODO: add environment var to control including logs with response
                     rsp.Logs = Logger.logs;
                 return rsp;
             }
 
-            SimplexError err;
-
-            if (!LoadOrVerifyConfig(diagInfo, out err))
-                return EndRequest(new SimplexResponse(rq, err), true);
+            if (!LoadOrVerifyConfig(diagInfo, out var err))
+                return EndRequest(rq, SimplexResult.Err(err), true);
 
             Logger.Debug($"config validated - {err.Code}");
 
             if (!VerifyErrorNames(diagInfo, out err))
-                return EndRequest(new SimplexResponse(rq, err));
+                return EndRequest(rq, SimplexResult.Err(err), true);
 
             Logger.Debug($"errors validated - {err.Code}");
 
             if (rq.RequestType == SimplexRequestType.PingPong)
-                return EndRequest(new SimplexResponse(rq, SimplexErrorCode.OK));
+                return EndRequest(rq, SimplexResult.OK(null), LambdaConfig.IncludeDiagnosticInfo);
 
             Logger.Debug("not ping pong");
 
-            return EndRequest(HandleRequest(rq, diagInfo));
+            return EndRequest(rq, HandleRequest(rq, diagInfo), LambdaConfig.IncludeDiagnosticInfo);
         }
 
-        public SimplexResponse HandleRequest(SimplexRequest rq, SimplexDiagnostics diagInfo)
+        public SimplexResult HandleRequest(SimplexRequest rq, SimplexDiagnostics diagInfo)
         {
             var diag = diagInfo.BeginDiag("HANDLE_REQUEST");
 
@@ -121,7 +109,7 @@ namespace SimplexLambda
             };
 
             if (!Handlers.GetHandler(context, out var handler, out var err))
-                return context.EndRequest(err, null, diag);
+                return context.EndRequest(SimplexResult.Err(err), diag);
 
             Logger.Debug($"Handler type: {handler.GetType().Name}");
             
@@ -130,29 +118,29 @@ namespace SimplexLambda
                 Logger.Debug("this request requires access token");
 
                 if (!SimplexAccessToken.FromString(context.Request.AccessToken, context, out var accessToken, out var tokenErr))
-                    return context.EndRequest(tokenErr, null, diag);
+                    return context.EndRequest(SimplexResult.Err(tokenErr), diag);
 
                 context.Token = accessToken;
             }
 
-            SimplexResponse rsp;
+            SimplexResult result;
             if (CatchExceptions)
             {
                 try
                 {
-                    rsp = handler.HandleRequest(context);
+                    result = handler.HandleRequest(context);
                 }
                 catch (Exception ex)
                 {
                     context.Log.Error(ex);
-                    return new SimplexResponse(rq, SimplexError.Custom(SimplexErrorCode.Unknown, LambdaConfig.DetailedErrors ? ex.ToString() : ex.Message));
+                    return SimplexResult.Err(SimplexError.Custom(SimplexErrorCode.Unknown, LambdaConfig.DetailedErrors ? ex.ToString() : ex.Message));
                 }
             }
             else
             {
-                rsp = handler.HandleRequest(context);
+                result = handler.HandleRequest(context);
             }
-            return rsp;
+            return result;
         }
 
         public SimplexError LoadOrVerifyConfig(SimplexDiagnostics diagInfo, out SimplexError e)

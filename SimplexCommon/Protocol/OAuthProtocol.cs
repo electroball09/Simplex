@@ -167,7 +167,7 @@ namespace Simplex.Protocol
         public OAuthAuthenticationData AuthenticationData { get; set; }
     }
 
-    public class OAuthRequestTokenResponse
+    public class OAuthTokenResponse
     {
         public OAuthTokenResponseData TokenData { get; set; }
     }

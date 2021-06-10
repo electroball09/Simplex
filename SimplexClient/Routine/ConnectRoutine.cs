@@ -9,27 +9,21 @@ namespace Simplex.Routine
 {
     public partial class Routines
     {
-        public static async Task<SimplexResponse<SimplexServiceConfig>> ConnectRoutine(ISimplexClient client)
+        public static async Task<SimplexResult> ConnectRoutine(ISimplexClient client)
         {
             SimplexRequest rq = new SimplexRequest(SimplexRequestType.GetServiceConfig, null);
-            var cfg = await client.SendRequest<SimplexServiceConfig>(rq);
-            return cfg;
+            return (await client.SendRequest(rq)).Result;
         }
 
-        public static async Task<SimplexResponse<AuthResponse>> AuthAccount(ISimplexClient client, AuthRequest authRq)
+        public static async Task<SimplexResult> AuthAccount(ISimplexClient client, AuthRequest authRq)
         {
             SimplexRequest rq = new SimplexRequest(SimplexRequestType.Auth, authRq);
+
             client.Config.Logger.Debug("sending auth request");
-            var rsp = await client.SendRequest<AuthResponse>(rq);
+            var rsp = await client.SendRequest(rq);
             client.Config.Logger.Debug("received auth response");
-            if (!rsp.Error)
-            {
-                if (rsp.Error == SimplexErrorCode.AuthAccountNonexistent)
-                    client.Config.Logger.Warn("Authentication attempt failed!");
-                else if (rsp.Error.Code == SimplexErrorCode.InvalidAuthCredentials)
-                    client.Config.Logger.Error(rsp.Error);
-            }
-            return rsp;
+
+            return rsp.Result;
         }
 
 

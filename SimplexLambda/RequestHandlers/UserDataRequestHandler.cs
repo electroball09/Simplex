@@ -11,15 +11,15 @@ namespace SimplexLambda.RequestHandlers
     {
         public override bool RequiresAccessToken => true;
 
-        public override SimplexResponse HandleRequest(SimplexRequestContext context)
+        public override SimplexResult HandleRequest(SimplexRequestContext context)
         {
             var handle = context.DiagInfo.BeginDiag("USER_DATA_REQUEST_HANDLER");
 
             if (!context.Request.PayloadAs<UserDataRequest>(out var dataRq, out var err))
-                return context.EndRequest(err, null, handle);
+                return context.EndRequest(SimplexResult.Err(err), handle);
 
             if (!ValidateAccess(context.Token, dataRq, out err))
-                return context.EndRequest(err, null, handle);
+                return context.EndRequest(SimplexResult.Err(err), handle);
 
             List<UserDataResult> results = new List<UserDataResult>();
 
@@ -42,7 +42,7 @@ namespace SimplexLambda.RequestHandlers
                 Results = results
             };
 
-            return context.EndRequest(SimplexErrorCode.OK, rsp, handle);
+            return context.EndRequest(SimplexResult.OK(rsp), handle);
         }
 
         public SimplexError ValidateAccess(SimplexAccessToken token, UserDataRequest dataRq, out SimplexError err)

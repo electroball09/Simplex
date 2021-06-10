@@ -28,15 +28,15 @@ namespace Simplex.Routine
             public AuthResponse Credentials { get; set; }
         }
 
-        public static async Task<OAuthTokenResponseData> OAuthTryLocateCachedToken(ISimplexClient client, AuthServiceIdentifier identifier)
+        public static async Task<SimplexResult<OAuthTokenResponseData>> OAuthTryLocateCachedToken(ISimplexClient client, AuthServiceIdentifier identifier)
         {
             var cache = await client.ClientCache.GetCache<TokenCache>();
 
             foreach (var ctok in cache.Data.tokens)
                 if (ctok.Identifier == identifier)
-                    return ctok.token;
+                    return SimplexResult.OK(ctok.token).To<OAuthTokenResponseData>();
 
-            return null;
+            return SimplexResult.Err(SimplexErrorCode.Unknown).To<OAuthTokenResponseData>();
         }
 
         public static async Task OAuthCacheToken(ISimplexClient client, OAuthTokenResponseData token, AuthServiceIdentifier identifier)

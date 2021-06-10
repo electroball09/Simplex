@@ -12,6 +12,6 @@ namespace Simplex.Transport
         ISimplexLogger Logger { get; set; }
 
         void Initialize();
-        Task<T> SendRequest<T>(SimplexRequest rq) where T : SimplexResponse;
+        Task<SimplexResponse> SendRequest(SimplexRequest rq);
     }
 }

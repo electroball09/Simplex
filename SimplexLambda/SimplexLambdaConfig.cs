@@ -23,7 +23,6 @@ namespace SimplexLambda
             public string AESKeyHex { get; set; }
         }
 
-        public DateTime ConfigLastUpdated { get; set; }
         [MinLength(1)]
         public string SimplexTable { get; set; } = "";
         public bool DetailedErrors { get; set; } = false;

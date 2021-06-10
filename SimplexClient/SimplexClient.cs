@@ -33,12 +33,11 @@ namespace Simplex
         ISimplexTransport Transport { get; }
         SimplexDataCache ClientCache { get; }
 
-        Task<SimplexResponse<TRsp>> SendRequest<TRsp>(SimplexRequest rq) where TRsp : class;
-        Task<SimplexBatchResponse> SendRequest(SimplexBatchRequest rq);
+        Task<SimplexResponse> SendRequest(SimplexRequest rq);
         Task SendPing();
         Task Connect();
-        Task<SimplexResponse<AuthResponse>> LoginBasicAccount(string accountId, string accountPw);
-        Task<SimplexResponse<AuthResponse>> LoginOAuth(AuthServiceIdentifier serviceIdentifier);
+        Task<SimplexResult<AuthResponse>> LoginBasicAccount(string accountId, string accountPw);
+        Task<SimplexResult<AuthResponse>> LoginOAuth(AuthServiceIdentifier serviceIdentifier);
     }
 
     public class SimplexClient<TTransport> : ISimplexClient where TTransport : ISimplexTransport
@@ -78,16 +77,10 @@ namespace Simplex
                 Config.GameName);
         }
 
-        public Task<SimplexResponse<TRsp>> SendRequest<TRsp>(SimplexRequest rq) where TRsp : class
+        public Task<SimplexResponse> SendRequest(SimplexRequest rq)
         {
             rq.ClientID = Config.ClientID;
-            return transport.SendRequest<SimplexResponse<TRsp>>(rq);
-        }
-
-        public Task<SimplexBatchResponse> SendRequest(SimplexBatchRequest rq)
-        {
-            rq.ClientID = Config.ClientID;
-            return transport.SendRequest<SimplexBatchResponse>(rq);
+            return transport.SendRequest(rq);
         }
 
         public Task SendPing()
@@ -96,7 +89,7 @@ namespace Simplex
                 (async () =>
                 {
                     logger.Info("Sending ping...");
-                    var rsp = await SendRequest<object>(new SimplexRequest(SimplexRequestType.PingPong, null));
+                    var rsp = await SendRequest(new SimplexRequest(SimplexRequestType.PingPong, null));
                     logger.Info("Received pong!");
                 });
             return task;
@@ -118,13 +111,19 @@ namespace Simplex
                     {
                         var cfg = await Routines.ConnectRoutine(this);
 
-                        if (!cfg.Error)
-                            cfg.Error.Throw();
-
-                        ServiceConfig = cfg.Data;
-                        CLIENT_STATE = SimplexClientState.Connected;
-                        logger.Info("SimplexClient - connected!");
-                        logger.Debug($"RSA key - {ServiceConfig.PublicKeyHex}");
+                        cfg.Get<SimplexServiceConfig>
+                            ((err) =>
+                            {
+                                logger.Error(err);
+                                CLIENT_STATE = SimplexClientState.Unconnected;
+                            },
+                            (cfg) =>
+                            {
+                                ServiceConfig = cfg;
+                                CLIENT_STATE = SimplexClientState.Connected;
+                                logger.Info("SimplexClient - connected!");
+                                logger.Debug($"RSA key - {ServiceConfig.PublicKeyHex}");
+                            });
                     }
                     catch (Exception ex)
                     {
@@ -156,24 +155,26 @@ namespace Simplex
             return authParams;
         }
 
-        private async Task LoginFlow_OnAuthResponseReceived(SimplexResponse<AuthResponse> rsp)
+        private async Task<SimplexResult<AuthResponse>> LoginFlow_OnAuthResponseReceived(SimplexResult result)
         {
-            if (!rsp.Error)
-            {
-                logger.Error($"Login failed! {rsp.Error}");
-                CLIENT_STATE = SimplexClientState.Connected;
-            }
-            else
-            {
-                logger.Info("Logged in successfully!");
-                LoggedInUser = rsp.Data;
-                CLIENT_STATE = SimplexClientState.LoggedIn;
+            await result.GetAsyncSome<AuthResponse>
+                ((err) =>
+                {
+                    logger.Error($"Login failed! {err}");
+                    CLIENT_STATE = SimplexClientState.Connected;
+                },
+                async (rsp) =>
+                {
+                    logger.Info($"Logged in successfully!");
+                    LoggedInUser = rsp;
+                    CLIENT_STATE = SimplexClientState.LoggedIn;
 
-                await Routines.CacheLoggedInUser(this, LoggedInUser);
-            }
+                    await Routines.CacheLoggedInUser(this, rsp);
+                });
+            return result.To<AuthResponse>();
         }
 
-        public Task<SimplexResponse<AuthResponse>> LoginBasicAccount(string accountId, string accountPassword)
+        public Task<SimplexResult<AuthResponse>> LoginBasicAccount(string accountId, string accountPassword)
         {
             var authParams = LoginFlow_BeginAndGetAuthParams(ServiceConfig.GetParamsByType(AuthServiceIdentifier.AuthType.Basic).Identifier);
 
@@ -201,20 +202,18 @@ namespace Simplex
                     {
                         var rsp = await Routines.AuthAccount(this, rq);
 
-                        await LoginFlow_OnAuthResponseReceived(rsp);
-
-                        return rsp;
+                        return await LoginFlow_OnAuthResponseReceived(rsp);
                     }
                     catch (Exception ex)
                     {
                         CLIENT_STATE = SimplexClientState.Connected;
                         logger.Error(ex.ToString());
-                        return null;
+                        return SimplexResult.Err(SimplexErrorCode.Unknown).To<AuthResponse>();
                     }
                 });
         }
 
-        public Task<SimplexResponse<AuthResponse>> LoginOAuth(AuthServiceIdentifier serviceIdentifier)
+        public Task<SimplexResult<AuthResponse>> LoginOAuth(AuthServiceIdentifier serviceIdentifier)
         {
             if (!serviceIdentifier.IsOAuth)
                 throw new InvalidOperationException("Must be a valid OAuth type!");
@@ -226,29 +225,37 @@ namespace Simplex
                 {
                     logger.Info($"Trying to locate cached OAuth token for {authParams.Identifier}...");
                     var tok = await Routines.OAuthTryLocateCachedToken(this, authParams.Identifier);
-                    if (tok != null)
-                    {
-                        if (DateTime.UtcNow > tok.UTCTimeRequested + TimeSpan.FromSeconds(tok.expires_in))
-                        {
-                            logger.Info("Cached token has expired, refreshing token...");
-                            tok = (await Routines.OAuthRefreshToken(this, tok, authParams)).Data.TokenData;
-                        }
-                        else
-                        {
-                            logger.Info("Found cached token!");
-                        }
-                    }
-                    else
-                    {
-                        logger.Info("Could not locate cached token, authenticating user...");
-                        var auth = await Routines.OAuthAuthenticate(this, authParams);
-                        tok = (await Routines.OAuthRequestToken(this, auth, authParams)).Data.TokenData;
-                    }
-                    var rsp = await Routines.OAuthAuthAccount(this, tok, authParams);
 
-                    await LoginFlow_OnAuthResponseReceived(rsp);
+                    await tok.GetAsync
+                        (async (err) =>
+                        {
+                            logger.Info("Could not locate cached token, authenticating user...");
+                            var auth = await Routines.OAuthAuthenticate(this, authParams);
+                            var tokenResult = await Routines.OAuthRequestToken(this, auth, authParams);
+                            tok = tokenResult.Sub((tok) => tok.TokenData).To<OAuthTokenResponseData>();
+                        },
+                        async (token) =>
+                        {
+                            if (DateTime.UtcNow > token.UTCTimeRequested + TimeSpan.FromSeconds(token.expires_in))
+                            {
+                                logger.Info("Cached token has expired, refreshing token...");
+                                var tokenResult = await Routines.OAuthRefreshToken(this, token, authParams);
+                                tok = tokenResult.Sub((tok) => tok.TokenData).To<OAuthTokenResponseData>();
+                            }
+                        });
 
-                    return rsp;
+                    SimplexResult result = null;
+                    await tok.GetAsyncSome
+                        ((err) =>
+                        {
+                            result = SimplexResult.Err(err);
+                        },
+                        async (token) =>
+                        {
+                            var rsp = await Routines.OAuthAuthAccount(this, token, authParams);
+                            result = await LoginFlow_OnAuthResponseReceived(rsp);
+                        });
+                    return result.To<AuthResponse>();
                 });
         }
     }

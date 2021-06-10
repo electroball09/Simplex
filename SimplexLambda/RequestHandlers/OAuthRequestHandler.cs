@@ -14,46 +14,39 @@ namespace SimplexLambda.RequestHandlers
     {
         public override bool RequiresAccessToken => false;
 
-        public override SimplexResponse HandleRequest(SimplexRequestContext context)
+        public override SimplexResult HandleRequest(SimplexRequestContext context)
         {
             var diag = context.DiagInfo.BeginDiag("OAUTH_REQUEST_HANDLER");
 
-            SimplexResponse EndRequest(SimplexResponse rsp)
-            {
-                context.DiagInfo.EndDiag(diag);
-                return rsp;
-            }
-
             if (!context.Request.PayloadAs<OAuthRequest>(out var oauthRq, out var err))
-                return context.EndRequest(err, null, diag);
+                return context.EndRequest(SimplexResult.Err(err), diag);
 
             if (oauthRq.RequestType == OAuthRequestType.RequestToken)
-                return EndRequest(HandleRequestToken(context));
+                return context.EndRequest(HandleRequestToken(context), diag);
 
             if (oauthRq.RequestType == OAuthRequestType.RefreshToken)
-                return EndRequest(HandleRefreshToken(context));
+                return context.EndRequest(HandleRefreshToken(context), diag);
 
-            return context.EndRequest(SimplexErrorCode.Unknown, null, diag);
+            return context.EndRequest(SimplexResult.Err(SimplexErrorCode.WTF), diag);
         }
 
-        private SimplexResponse HandleRequestToken(SimplexRequestContext context)
+        private SimplexResult HandleRequestToken(SimplexRequestContext context)
         {
             var diag = context.DiagInfo.BeginDiag("HANDLE_REQUEST_TOKEN");
 
             if (!context.Request.PayloadAs<OAuthRequestTokenRequest>(out var oauthRq, out var err))
-                return context.EndRequest(err, null, diag);
+                return context.EndRequest(SimplexResult.Err(err), diag);
+
 
             if (!oauthRq.ServiceIdentifier.IsOAuth)
             {
-                return context.EndRequest(
-                    SimplexError.Custom(SimplexErrorCode.WTF, $"not oauth type - {oauthRq.ServiceIdentifier}"),
-                    null, diag);
+                return context.EndRequest(SimplexResult.Err(SimplexError.Custom(SimplexErrorCode.WTF, $"not oauth type - {oauthRq.ServiceIdentifier}")), diag);
             }
 
             var authParams = context.LambdaConfig.GetAuthParamsFromIdentifier(oauthRq.ServiceIdentifier);
 
             if (!authParams.Enabled)
-                return context.EndRequest(SimplexErrorCode.AuthServiceDisabled, null, diag);
+                return context.EndRequest(SimplexResult.Err(SimplexErrorCode.AuthServiceDisabled), diag);
 
             try
             {
@@ -61,7 +54,7 @@ namespace SimplexLambda.RequestHandlers
 
                 string url = authParams.CreateTokenRequestURL(oauthRq.AuthenticationData.AuthCode, oauthRq.AuthenticationData.RedirectURI);
                 if (!context.RestClient.EZPost(url, null, context.DiagInfo, out var rsp, out var restErr))
-                    return context.EndRequest(restErr, null, diag);
+                    return context.EndRequest(SimplexResult.Err(restErr), diag);
 
                 var rspData = (OAuthTokenResponseData)JsonSerializer.Deserialize(rsp.Content, type);
                 rspData.UTCTimeRequested = DateTime.UtcNow - TimeSpan.FromSeconds(10); // just to be safe
@@ -69,39 +62,37 @@ namespace SimplexLambda.RequestHandlers
                 context.Log.Debug(rsp.Content);
 
                 if (rspData.error != null)
-                    return context.EndRequest(SimplexError.Custom(SimplexErrorCode.Unknown, rsp.Content), null, diag);
+                    return context.EndRequest(SimplexResult.Err(SimplexError.Custom(SimplexErrorCode.Unknown, rsp.Content)), diag);
 
-                OAuthRequestTokenResponse response = new OAuthRequestTokenResponse()
+                OAuthTokenResponse response = new OAuthTokenResponse()
                 {
                     TokenData = rspData,
                 };
 
-                return context.EndRequest(SimplexErrorCode.OK, response, diag);
+                return context.EndRequest(SimplexResult.OK(response), diag);
             }
             catch (Exception ex)
             {
-                return context.EndRequest(SimplexError.Custom(SimplexErrorCode.Unknown, ex.ToString()), null, diag);
+                return context.EndRequest(SimplexResult.Err(SimplexError.Custom(SimplexErrorCode.Unknown, ex.ToString())), diag);
             }
         }
 
-        private SimplexResponse HandleRefreshToken(SimplexRequestContext context)
+        private SimplexResult HandleRefreshToken(SimplexRequestContext context)
         {
             var diag = context.DiagInfo.BeginDiag("HANDLE_REFRESH_TOKEN");
 
             if (!context.Request.PayloadAs<OAuthRefreshTokenRequest>(out var oauthRq, out var err))
-                return context.EndRequest(err, null, diag);
+                return context.EndRequest(SimplexResult.Err(err), diag);
 
             if (!oauthRq.ServiceIdentifier.IsOAuth)
             {
-                return context.EndRequest(
-                    SimplexError.Custom(SimplexErrorCode.WTF, $"not oauth type - {oauthRq.ServiceIdentifier}"),
-                    null, diag);
+                return context.EndRequest(SimplexResult.Err(SimplexError.Custom(SimplexErrorCode.WTF, $"not oauth type - {oauthRq.ServiceIdentifier}")), diag);
             }
 
             var authParams = context.LambdaConfig.GetAuthParamsFromIdentifier(oauthRq.ServiceIdentifier);
 
             if (!authParams.Enabled)
-                return context.EndRequest(SimplexErrorCode.AuthServiceDisabled, null, diag);
+                return context.EndRequest(SimplexResult.Err(SimplexErrorCode.AuthServiceDisabled), diag);
 
             try
             {
@@ -109,7 +100,7 @@ namespace SimplexLambda.RequestHandlers
 
                 string url = authParams.CreateTokenRefreshURL(oauthRq.Token.refresh_token);
                 if (!context.RestClient.EZPost(url, null, context.DiagInfo, out var rsp, out var restErr))
-                    return context.EndRequest(restErr, null, diag);
+                    return context.EndRequest(SimplexResult.Err(restErr), diag);
 
                 var rspData = (OAuthTokenResponseData)JsonSerializer.Deserialize(rsp.Content, type);
                 rspData.UTCTimeRequested = DateTime.UtcNow - TimeSpan.FromSeconds(10); // just to be safe
@@ -117,20 +108,23 @@ namespace SimplexLambda.RequestHandlers
                 context.Log.Debug(rsp.Content);
 
                 if (rspData.error != null)
-                    return context.EndRequest(SimplexError.Custom(SimplexErrorCode.Unknown, rsp.Content), null, diag);
+                    return context.EndRequest(SimplexResult.Err(SimplexError.Custom(SimplexErrorCode.Unknown, rsp.Content)), diag);
 
                 rspData.refresh_token = oauthRq.Token.refresh_token; // some services don't return the refresh token so we copy it over
 
-                OAuthRequestTokenResponse response = new OAuthRequestTokenResponse()
+                OAuthTokenResponse response = new OAuthTokenResponse()
                 {
                     TokenData = rspData,
                 };
 
-                return context.EndRequest(SimplexErrorCode.OK, response, diag);
+                if (oauthRq.Token.IDToken != rspData.IDToken)
+                    rspData.id_token = oauthRq.Token.id_token;
+
+                return context.EndRequest(SimplexResult.OK(response), diag);
             }
             catch (Exception ex)
             {
-                return context.EndRequest(SimplexError.Custom(SimplexErrorCode.Unknown, ex.ToString()), null, diag);
+                return context.EndRequest(SimplexResult.Err(SimplexError.Custom(SimplexErrorCode.Unknown, ex.ToString())), diag);
             }
         }
     }

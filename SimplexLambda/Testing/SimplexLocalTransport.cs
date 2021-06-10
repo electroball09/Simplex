@@ -35,7 +35,7 @@ namespace SimplexLambda.Testing
             SimplexLambdaFunctions.CatchExceptions = false;
         }
 
-        public Task<T> SendRequest<T>(SimplexRequest rq) where T : SimplexResponse
+        public Task<SimplexResponse> SendRequest(SimplexRequest rq)
         {
             return Task.Run
                 (() =>
@@ -47,7 +47,7 @@ namespace SimplexLambda.Testing
                     string rspJson = JsonSerializer.Serialize(rsp);
                     Logger.Debug(rspJson);
                     rsp.DiagInfo.DebugLog(Logger);
-                    T rspDeserialized = JsonSerializer.Deserialize<T>(rspJson);
+                    SimplexResponse rspDeserialized = JsonSerializer.Deserialize<SimplexResponse>(rspJson);
                     rspDeserialized.Logger = Logger;
                     return rspDeserialized;
                 });

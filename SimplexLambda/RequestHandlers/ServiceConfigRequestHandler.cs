@@ -10,13 +10,9 @@ namespace SimplexLambda.RequestHandlers
     {
         public override bool RequiresAccessToken => false;
 
-        public override SimplexResponse HandleRequest(SimplexRequestContext context)
+        public override SimplexResult HandleRequest(SimplexRequestContext context)
         {
-            return new SimplexResponse(context.Request)
-            {
-                Error = SimplexErrorCode.OK,
-                Payload = context.LambdaConfig.ServiceConfig
-            };
+            return SimplexResult.OK(context.LambdaConfig.ServiceConfig);
         }
     }
 }

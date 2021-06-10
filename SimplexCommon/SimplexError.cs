@@ -19,13 +19,13 @@ namespace Simplex
 
         //client errors
         InvalidResponsePayloadType,
+        InvalidRequestPayloadType,
 
         // server -> client error
         LambdaMisconfiguration,
         InvalidRequestType,
         AccessTokenInvalid,
         InvalidAuthCredentials,
-        InvalidPayloadType,
         AuthServiceDisabled,
 
         //access errors
@@ -53,10 +53,10 @@ namespace Simplex
             { SimplexErrorCode.AccessTokenInvalid, "Access token is either expired or nonexistent" },
             { SimplexErrorCode.InvalidCryptographyConfiguration, "The requested cryptography function returned an error" },
             { SimplexErrorCode.InvalidAuthCredentials, "The provided auth credentials are invalid" },
-            { SimplexErrorCode.InvalidPayloadType, "The provided payload was of an incorrect type" },
             { SimplexErrorCode.PermissionDenied, "Access to this resource was denied" },
             { SimplexErrorCode.AccessTokenExpired, "Access token has expired.  Please reauthenticate" },
             { SimplexErrorCode.AuthServiceDisabled, "The requested auth service is not enabled" },
+            { SimplexErrorCode.InvalidRequestPayloadType, "The payload in the request was of an invalid type" },
         };
 
         public static List<string> ValidateErrors()

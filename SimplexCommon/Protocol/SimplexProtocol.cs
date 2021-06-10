@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 
 namespace Simplex.Protocol
 {
@@ -22,6 +23,8 @@ namespace Simplex.Protocol
 
         UserData,
     }
+
+
 
     public class SimplexRequest
     {
@@ -64,9 +67,184 @@ namespace Simplex.Protocol
             catch (Exception ex)
             {
                 obj = null;
-                err = SimplexError.Custom(SimplexErrorCode.InvalidPayloadType, ex.ToString());
+                err = SimplexError.Custom(SimplexErrorCode.InvalidRequestPayloadType, ex.ToString());
             }
             return err;
+        }
+    }
+
+    public class SimplexResult
+    {
+        public SimplexError Error { get; set; }
+        public string ResultJSON { get; set; }
+        public string ResultType { get; set; }
+
+        public static SimplexResult OK(object resultValue)
+        {
+            if (resultValue == null)
+                throw new ArgumentNullException("resultValue");
+
+            SimplexResult result = new SimplexResult
+            {
+                Error = SimplexErrorCode.OK,
+            };
+            result.SetResult(resultValue);
+
+            return result;
+        }
+
+        public static SimplexResult Err(SimplexError error)
+        {
+            if (error == null)
+                throw new ArgumentNullException("error");
+
+            SimplexResult result = new SimplexResult
+            {
+                Error = error,
+            };
+
+            result.SetResult(null);
+
+            return result;
+        }
+
+        public static SimplexResult Copy(SimplexResult orig)
+        {
+            return new SimplexResult().CopyFrom(orig);
+        }
+
+        private void SetResult(object result)
+        {
+            if (result == null)
+            {
+                ResultJSON = "";
+                ResultType = "";
+                return;
+            }
+
+            ResultJSON = JsonSerializer.Serialize(result, result.GetType());
+            ResultType = result.GetType().AssemblyQualifiedName;
+        }
+
+        [Obsolete("dont use this")]
+        public SimplexResult() { }
+
+        public void Get<T>(Action<SimplexError> OnErr, Action<T> OnSome, Action OnOtherType = null)
+        {
+            if (Error.Code != SimplexErrorCode.OK)
+            {
+                OnErr(Error);
+            }
+            else
+            {
+                if (ResultType == typeof(T).AssemblyQualifiedName)
+                {
+                    OnSome(JsonSerializer.Deserialize<T>(ResultJSON));
+                }
+                else
+                {
+                    if (OnOtherType == null)
+                    {
+                        Console.WriteLine("Other type was encountered and not handled!");
+                        Console.WriteLine(Environment.StackTrace);
+                    }
+                    else
+                        OnOtherType();
+                }
+            }
+        }
+
+        public async Task GetAsync<T>(Func<SimplexError, Task> OnErr, Func<T, Task> OnSome, Func<Task> OnOtherType = null)
+        {
+            if (Error.Code != SimplexErrorCode.OK)
+            {
+                await OnErr(Error);
+            }
+            else
+            {
+                if (ResultType == typeof(T).AssemblyQualifiedName)
+                {
+                    await OnSome(JsonSerializer.Deserialize<T>(ResultJSON));
+                }
+                else
+                {
+                    if (OnOtherType == null)
+                    {
+                        Console.WriteLine("Other type was encountered and not handled!");
+                        Console.WriteLine(Environment.StackTrace);
+                    }
+                    else
+                        await OnOtherType();
+                }
+            }
+        }
+
+        public async Task GetAsyncSome<T>(Action<SimplexError> OnErr, Func<T, Task> OnSome, Func<Task> OnOtherType = null)
+        {
+            if (Error.Code != SimplexErrorCode.OK)
+            {
+                OnErr(Error);
+            }
+            else
+            {
+                if (ResultType == typeof(T).AssemblyQualifiedName)
+                {
+                    await OnSome(JsonSerializer.Deserialize<T>(ResultJSON));
+                }
+                else
+                {
+                    if (OnOtherType == null)
+                    {
+                        Console.WriteLine("Other type was encountered and not handled!");
+                        Console.WriteLine(Environment.StackTrace);
+                    }
+                    else
+                        await OnOtherType();
+                }
+            }
+        }
+
+        public SimplexResult Sub<TResult, TNew>(Func<TResult, TNew> OnSome)
+        {
+            SimplexResult result = null;
+            Get<TResult>((err) => result = SimplexResult.Err(err),
+                (obj) => result = SimplexResult.OK(OnSome(obj)),
+                () => result = Copy(this));
+            return result;
+        }
+
+        public SimplexResult CopyFrom(SimplexResult result)
+        {
+            Error = result.Error;
+            ResultJSON = result.ResultJSON;
+            ResultType = result.ResultType;
+            return this;
+        }
+
+        public SimplexResult<T> To<T>()
+        {
+            return new SimplexResult<T>(this);
+        }
+    }
+
+    public class SimplexResult<T> : SimplexResult
+    {
+        public void Get(Action<SimplexError> OnErr, Action<T> OnSome, Action OnOtherType = null) => Get<T>(OnErr, OnSome, OnOtherType);
+        public async Task GetAsync(Func<SimplexError, Task> OnErr, Func<T, Task> OnSome, Func<Task> OnOtherType = null) => await GetAsync<T>(OnErr, OnSome, OnOtherType);
+        public async Task GetAsyncSome(Action<SimplexError> OnErr, Func<T, Task> OnSome, Func<Task> OnOtherType = null) => await GetAsyncSome<T>(OnErr, OnSome, OnOtherType);
+        public SimplexResult Sub<TNew>(Func<T, TNew> OnSome) => Sub<T, TNew>(OnSome);
+
+        internal SimplexResult(SimplexResult old)
+        {
+            CopyFrom(old);
+        }
+    }
+
+    public class SimplexLambdaResponse : SimplexResponse
+    {
+        public SimplexLambdaResponse(SimplexRequest rq, SimplexResult result) : base(rq)
+        {
+            Result = result;
         }
     }
 
@@ -74,22 +252,8 @@ namespace Simplex.Protocol
     {
         public int RequestID { get; set; }
         public SimplexRequestType RequestType { get; set; }
-        public SimplexError Error { get; set; }
 
-        public string PayloadType { get; set; } = "";
-        private object _payload = null;
-        public object Payload 
-        {
-            get { return _payload; }
-            set
-            {
-                if (value == null)
-                    PayloadType = "";
-                else
-                    PayloadType = value.GetType().Name;
-                _payload = value;
-            }
-        }
+        public SimplexResult Result { get; set; }
 
         public SimplexDiagnostics DiagInfo { get; set; }
         public List<object> Logs { get; set; } = new List<object>();
@@ -107,48 +271,6 @@ namespace Simplex.Protocol
             TimeTaken = DateTime.Now - rq.CreatedTime;
             RequestID = rq.RequestID;
             RequestType = rq.RequestType;
-        }
-
-        public SimplexResponse(SimplexRequest rq, SimplexError err) : this(rq)
-        {
-            Error = err;
-        }
-
-        public T PayloadAs<T>() where T : class
-        {
-            try
-            {
-                if (Payload == null)
-                    return null;
-
-                if (PayloadType == "JsonElement")
-                {
-                    return JsonSerializer.Deserialize<T>(((JsonElement)Payload).GetRawText());
-                }
-
-                return Payload as T;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($">>>>>>>>>>>>>>>>>>>> {ex}");
-                Logger?.Error(ex.Message);
-                return null;
-            }
-        }
-    }
-
-    public class SimplexResponse<T> : SimplexResponse where T : class
-    {
-        [JsonIgnore]
-        public T Data 
-        { 
-            get
-            {
-                T val = PayloadAs<T>();
-                if (val == null)
-                    throw new InvalidOperationException($"Payload [{Payload} - {Payload?.GetType()}] was null or not of the expected type");
-                return val;
-            }
         }
     }
 }

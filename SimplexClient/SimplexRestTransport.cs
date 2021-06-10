@@ -68,7 +68,7 @@ namespace Simplex
             client.UseSerializer<SystemTextJsonSerializer>();
         }
 
-        public async Task<T> SendRequest<T>(SimplexRequest request) where T : SimplexResponse
+        public async Task<SimplexResponse> SendRequest(SimplexRequest request)
         {
             return await Task.Run
                 (async () =>
@@ -78,16 +78,20 @@ namespace Simplex
                     var json = await RequestGetJson(request);
 
                     var el = JsonSerializer.Deserialize<JsonElement>(json);
-                    bool isError = el.TryGetProperty("errorType", out var err);
+                    bool isJsonError = el.TryGetProperty("errorType", out var err);
+
                     Logger.Debug($"-request ID {request.RequestID} took {(DateTime.Now - request.CreatedTime).TotalMilliseconds} ms");
-                    var rsp = JsonSerializer.Deserialize<T>(json);
-                    if (isError)
+
+                    var rsp = JsonSerializer.Deserialize<SimplexResponse>(json);
+                    if (isJsonError)
                     {
-                        rsp.Error = SimplexError.Custom(SimplexErrorCode.Unknown, json);
+                        rsp.Result = SimplexResult.Err(SimplexError.Custom(SimplexErrorCode.Unknown, json));
                     }
+
                     rsp.DiagInfo?.DebugLog(Logger);
                     foreach (var o in rsp.Logs)
                         Logger.Debug($"  log> {o}");
+
                     return rsp;
                 }, new System.Threading.CancellationToken());
         }

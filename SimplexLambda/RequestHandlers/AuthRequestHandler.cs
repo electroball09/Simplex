@@ -15,24 +15,22 @@ namespace SimplexLambda.RequestHandlers
     {
         public override bool RequiresAccessToken => false;
 
-        public override SimplexResponse HandleRequest(SimplexRequestContext context)
+        public override SimplexResult HandleRequest(SimplexRequestContext context)
         {
             var diagHandle = context.DiagInfo.BeginDiag("AUTH_REQUEST_HANDLER");
 
             if (!context.Request.PayloadAs<AuthRequest>(out var authRq, out var err))
             {
-                return context.EndRequest(
-                    SimplexError.Custom(SimplexErrorCode.InvalidAuthCredentials, "Invalid payload type"),
-                    null, diagHandle);
+                return context.EndRequest(SimplexResult.Err(err), diagHandle);
             }
 
             var authParams = context.LambdaConfig.GetAuthParamsFromIdentifier(authRq.ServiceIdentifier);
 
             if (!AuthProvider.GetProvider(authRq.ServiceIdentifier, out var provider, out err))
-                return context.EndRequest(err, null, diagHandle);
+                return context.EndRequest(SimplexResult.Err(err), diagHandle);
 
             if (!authParams.Enabled)
-                return context.EndRequest(SimplexErrorCode.AuthServiceDisabled, null, diagHandle);
+                return context.EndRequest(SimplexResult.Err(SimplexErrorCode.AuthServiceDisabled), diagHandle);
 
             provider.AuthUser(authParams, context, out authRq, out var acc, out var authError);
 
@@ -42,19 +40,19 @@ namespace SimplexLambda.RequestHandlers
             if (authError.Code == SimplexErrorCode.AuthAccountNonexistent)
             {
                 if (!authRq.CreateAccountIfNonexistent)
-                    return context.EndRequest(authError, null, diagHandle);
+                    return context.EndRequest(SimplexResult.Err(authError), diagHandle);
                 else
                 {
                     var newAcc = AuthAccount.Create(authParams.Identifier, authRq.AccountID);
 
                     if (!LambdaUtil.CreateNewAccount(ref newAcc, context, out var createErr))
-                        return context.EndRequest(createErr, null, diagHandle);
+                        return context.EndRequest(SimplexResult.Err(createErr), diagHandle);
 
                     if (!LambdaUtil.CreateNewUser(newAcc, context, out var newGuid, out var createUserErr))
-                        return context.EndRequest(createUserErr, null, diagHandle);
+                        return context.EndRequest(SimplexResult.Err(createUserErr), diagHandle);
 
                     if (!LambdaUtil.LinkAccountToUser(newAcc, newGuid, context, out var linkErr))
-                        return context.EndRequest(linkErr, null, diagHandle);
+                        return context.EndRequest(SimplexResult.Err(linkErr), diagHandle);
 
                     newAcc.ConnectedUserGUID = newGuid;
                     newAcc.EmailAddress = acc.EmailAddress;
@@ -63,7 +61,7 @@ namespace SimplexLambda.RequestHandlers
                 }
             }
             else if (!authError)
-                return context.EndRequest(authError, null, diagHandle);
+                return context.EndRequest(SimplexResult.Err(authError), diagHandle);
 
             acc.LastAccessedUTC = DateTime.UtcNow;
             context.DB.SaveItem(acc, out _);
@@ -100,7 +98,7 @@ namespace SimplexLambda.RequestHandlers
                 AccountDetails = accDetails,
             };
 
-            return context.EndRequest(SimplexErrorCode.OK, response, diagHandle);
+            return context.EndRequest(SimplexResult.OK(response), diagHandle);
         }
     }
 }

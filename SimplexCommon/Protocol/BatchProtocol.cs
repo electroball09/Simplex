@@ -13,8 +13,8 @@ namespace Simplex.Protocol
         public List<SimplexRequest> Requests { get; set; } = new List<SimplexRequest>();
     }
 
-    public class SimplexBatchResponse : SimplexResponse<List<SimplexResponse>>
+    public class SimplexBatchResponse : SimplexResponse
     {
-        public List<SimplexResponse> Responses => Data;
+        public List<SimplexResponse> Responses { get; set; }
     }
 }
