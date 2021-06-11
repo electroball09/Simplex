@@ -132,22 +132,15 @@ namespace Simplex.Protocol
         public void Get<T>(Action<SimplexError> OnErr, Action<T> OnSome, Action OnOtherType = null)
         {
             if (Error.Code != SimplexErrorCode.OK)
-            {
                 OnErr(Error);
-            }
             else
             {
                 if (ResultType == typeof(T).AssemblyQualifiedName)
-                {
                     OnSome(JsonSerializer.Deserialize<T>(ResultJSON));
-                }
                 else
                 {
                     if (OnOtherType == null)
-                    {
-                        Console.WriteLine("Other type was encountered and not handled!");
-                        Console.WriteLine(Environment.StackTrace);
-                    }
+                        throw new InvalidOperationException("Other type was encountered and not handled!");
                     else
                         OnOtherType();
                 }
@@ -157,49 +150,35 @@ namespace Simplex.Protocol
         public async Task GetAsync<T>(Func<SimplexError, Task> OnErr, Func<T, Task> OnSome, Func<Task> OnOtherType = null)
         {
             if (Error.Code != SimplexErrorCode.OK)
-            {
                 await OnErr(Error);
-            }
             else
             {
                 if (ResultType == typeof(T).AssemblyQualifiedName)
-                {
                     await OnSome(JsonSerializer.Deserialize<T>(ResultJSON));
-                }
                 else
                 {
                     if (OnOtherType == null)
-                    {
-                        Console.WriteLine("Other type was encountered and not handled!");
-                        Console.WriteLine(Environment.StackTrace);
-                    }
+                        throw new InvalidOperationException("Other type was encountered and not handled!");
                     else
                         await OnOtherType();
                 }
             }
         }
 
-        public async Task GetAsyncSome<T>(Action<SimplexError> OnErr, Func<T, Task> OnSome, Func<Task> OnOtherType = null)
+        public async Task GetAsyncSome<T>(Action<SimplexError> OnErr, Func<T, Task> OnSome, Action OnOtherType = null)
         {
             if (Error.Code != SimplexErrorCode.OK)
-            {
                 OnErr(Error);
-            }
             else
             {
                 if (ResultType == typeof(T).AssemblyQualifiedName)
-                {
                     await OnSome(JsonSerializer.Deserialize<T>(ResultJSON));
-                }
                 else
                 {
                     if (OnOtherType == null)
-                    {
-                        Console.WriteLine("Other type was encountered and not handled!");
-                        Console.WriteLine(Environment.StackTrace);
-                    }
+                        throw new InvalidOperationException("Other type was encountered and not handled!");
                     else
-                        await OnOtherType();
+                        OnOtherType();
                 }
             }
         }
@@ -231,7 +210,7 @@ namespace Simplex.Protocol
     {
         public void Get(Action<SimplexError> OnErr, Action<T> OnSome, Action OnOtherType = null) => Get<T>(OnErr, OnSome, OnOtherType);
         public async Task GetAsync(Func<SimplexError, Task> OnErr, Func<T, Task> OnSome, Func<Task> OnOtherType = null) => await GetAsync<T>(OnErr, OnSome, OnOtherType);
-        public async Task GetAsyncSome(Action<SimplexError> OnErr, Func<T, Task> OnSome, Func<Task> OnOtherType = null) => await GetAsyncSome<T>(OnErr, OnSome, OnOtherType);
+        public async Task GetAsyncSome(Action<SimplexError> OnErr, Func<T, Task> OnSome, Action OnOtherType = null) => await GetAsyncSome<T>(OnErr, OnSome, OnOtherType);
         public SimplexResult Sub<TNew>(Func<T, TNew> OnSome) => Sub<T, TNew>(OnSome);
 
         internal SimplexResult(SimplexResult old)

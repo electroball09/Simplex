@@ -38,6 +38,8 @@ namespace Simplex
         Task Connect();
         Task<SimplexResult<AuthResponse>> LoginBasicAccount(string accountId, string accountPw);
         Task<SimplexResult<AuthResponse>> LoginOAuth(AuthServiceIdentifier serviceIdentifier);
+        Task<SimplexResult<UserDataResponse>> GetUserData(params object[] userDatas);
+        Task<SimplexResult<UserDataResponse>> SetUserData(params object[] userDatas);
     }
 
     public class SimplexClient<TTransport> : ISimplexClient where TTransport : ISimplexTransport
@@ -77,9 +79,15 @@ namespace Simplex
                 Config.GameName);
         }
 
+        /// <summary>
+        /// Asynchronously sends a request, returning a task that can be waited on for a response
+        /// </summary>
+        /// <param name="rq">The request to send.  Client ID and Access Token (if available) are applied automatically.</param>
+        /// <returns></returns>
         public Task<SimplexResponse> SendRequest(SimplexRequest rq)
         {
             rq.ClientID = Config.ClientID;
+            rq.AccessToken = LoggedInUser?.Credentials.AuthToken;
             return transport.SendRequest(rq);
         }
 
@@ -256,6 +264,62 @@ namespace Simplex
                             result = await LoginFlow_OnAuthResponseReceived(rsp);
                         });
                     return result.To<AuthResponse>();
+                });
+        }
+
+        public Task<SimplexResult<UserDataResponse>> GetUserData(params object[] userDatas)
+        {
+            if (CLIENT_STATE != SimplexClientState.LoggedIn)
+                throw new InvalidOperationException("Client must be logged in before getting user data");
+
+            return Task.Run
+                (async () =>
+                {
+                    UserDataRequest dataRq = new UserDataRequest()
+                    {
+                        RequestType = UserDataRequestType.GetUserData,
+                        UserGUID = LoggedInUser.Credentials.UserGUID
+                    };
+
+                    foreach (object obj in userDatas)
+                    {
+                        var dataOp = new UserDataOperation(obj);
+                        dataRq.UserDataList.Add(dataOp);
+                    }
+
+                    SimplexRequest rq = new SimplexRequest(SimplexRequestType.UserData, dataRq);
+
+                    var rsp = await SendRequest(rq);
+
+                    return rsp.Result.To<UserDataResponse>();
+                });
+        }
+
+        public Task<SimplexResult<UserDataResponse>> SetUserData(params object[] userDatas)
+        {
+            if (CLIENT_STATE != SimplexClientState.LoggedIn)
+                throw new InvalidOperationException("Client must be logged in before setting user data");
+
+            return Task.Run
+                (async () =>
+                {
+                    UserDataRequest dataRq = new UserDataRequest()
+                    {
+                        RequestType = UserDataRequestType.SetUserData,
+                        UserGUID = LoggedInUser.Credentials.UserGUID
+                    };
+
+                    foreach (object obj in userDatas)
+                    {
+                        var dataOp = new UserDataOperation(obj);
+                        dataRq.UserDataList.Add(dataOp);
+                    }
+
+                    SimplexRequest rq = new SimplexRequest(SimplexRequestType.UserData, dataRq);
+
+                    var rsp = await SendRequest(rq);
+
+                    return rsp.Result.To<UserDataResponse>();
                 });
         }
     }

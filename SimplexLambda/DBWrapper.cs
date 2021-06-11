@@ -36,7 +36,7 @@ namespace SimplexLambda
 
         public SimplexError LoadUserData(Guid userGUID, UserDataOperation dataOp, SimplexRequestContext context, out UserDataResult result, out SimplexError err)
         {
-            var diag = context.DiagInfo.BeginDiag($"DB_LOAD_[{dataOp.__dataType}]");
+            var diag = context.DiagInfo.BeginDiag($"DB_LOAD_[{dataOp.Json.DataType}]");
             string range = dataOp.GetDBRange();
             var t = dbTable.GetItemAsync(userGUID, range, getOpCfg);
             t.Wait();
@@ -44,7 +44,7 @@ namespace SimplexLambda
             result.Error = t.Result == null ? SimplexErrorCode.DBItemNonexistent : SimplexErrorCode.OK;
             if (t.Result != null)
             {
-                result.__dataJson = t.Result.ToJson();
+                result.Json.DataJSON = t.Result.ToJson();
             }
             context.DiagInfo.EndDiag(diag);
             err = result.Error;
@@ -53,8 +53,8 @@ namespace SimplexLambda
 
         public SimplexError SaveUserData(Guid userGUID, UserDataOperation dataOp, SimplexRequestContext context, out UserDataResult result, out SimplexError err)
         {
-            var diag = context.DiagInfo.BeginDiag($"DB_SAVE_[{dataOp.__dataType}]");
-            Document doc = Document.FromJson(dataOp.__dataJson);
+            var diag = context.DiagInfo.BeginDiag($"DB_SAVE_[{dataOp.Json.DataType}]");
+            Document doc = Document.FromJson(dataOp.Json.DataJSON);
             doc["Hash"] = userGUID.ToString();
             doc["Range"] = dataOp.GetDBRange();
             var task = dbTable.PutItemAsync(doc);

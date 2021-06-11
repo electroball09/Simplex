@@ -58,10 +58,8 @@ namespace SimplexLambda
                 CreationDate = DateTime.UtcNow,
             };
 
-            UserDataOperation privDataOp = new UserDataOperation();
-            privDataOp.SetDataJSON(privData);
-            UserDataOperation pubDataOp = new UserDataOperation();
-            pubDataOp.SetDataJSON(pubData);
+            UserDataOperation privDataOp = new UserDataOperation(privData);
+            UserDataOperation pubDataOp = new UserDataOperation(pubData);
 
             if (!context.DB.SaveUserData(newGuid, privDataOp, context, out _, out err))
                 return End(err, out err);
@@ -83,14 +81,13 @@ namespace SimplexLambda
             }
 
             UserBasicDataPrivate privData = new UserBasicDataPrivate();
-            UserDataOperation privDataOp = new UserDataOperation();
-            privDataOp.SetDataJSON(privData);
+            UserDataOperation privDataOp = new UserDataOperation(privData);
 
             if (!context.DB.LoadUserData(userGUID, privDataOp, context, out _, out var loadErr))
                 return End(loadErr, out err);
 
             privData.ConnectedAccounts.Add(acc.ToAccountDetails(context.LambdaConfig));
-            privDataOp.SetDataJSON(privData);
+            privDataOp.Json.SetData(privData);
 
             if (!context.DB.SaveUserData(userGUID, privDataOp, context, out _, out var saveErr))
                 return End(saveErr, out err);
@@ -108,8 +105,7 @@ namespace SimplexLambda
             var diag = context.DiagInfo.BeginDiag("GET_NEW_UNIQUE_ID");
 
             UserBasicDataPrivate privData = new UserBasicDataPrivate();
-            UserDataOperation op = new UserDataOperation();
-            op.SetDataJSON(privData);
+            UserDataOperation op = new UserDataOperation(privData);
 
             Guid newGuid = Guid.NewGuid();
 
